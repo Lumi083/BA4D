@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Overlay Demo</title>
+  <style>
+    :root {
+      --bg: rgba(12, 32, 48, 0.62);
+      --text: #f4f7fb;
+      --accent: #f2a65a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: transparent;
+    }
+
+    .overlay-card {
+      margin: 0;
+      width: 100%;
+      padding: 14px 18px;
+      background: linear-gradient(120deg, var(--bg), rgba(20, 52, 77, 0.45));
+      border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+      backdrop-filter: blur(4px);
+    }
+
+    .title {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0.4px;
+      color: var(--accent);
+    }
+
+    .meta {
+      margin-top: 6px;
+      font-size: 13px;
+      opacity: 0.95;
+    }
+
+    .touch {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.28);
+      font-size: 12px;
+      line-height: 1.45;
+      opacity: 0.95;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <section class="overlay-card">
+    <h1 class="title">PotDroid Overlay 实验层</h1>
+    <div class="meta" id="clock"></div>
+    <div class="touch" id="touchInfo">触屏坐标: 等待输入
+WS: 未连接</div>
+  </section>
+
+  <script>
+    const el = document.getElementById('clock');
+    const touchInfo = document.getElementById('touchInfo');
+    const wsPort = 42891;
+    let ws = null;
+    let wsKeepAlive = null;
+    let lastPoint = { x: '-', y: '-', btn: 0, ts: '-' };
+    let lastBgEvent = { event: '-', pkg: '-', x: '-', y: '-', ts: '-' };
+
+    function renderTouchInfo(extra) {
+      const lines = [
+        `触屏坐标: (${lastPoint.x}, ${lastPoint.y})`,
+        `按压状态: ${lastPoint.btn ? '按下' : '抬起'}`,
+        `最后更新: ${lastPoint.ts}`,
+        `后台事件: ${lastBgEvent.event}`,
+        `后台来源: ${lastBgEvent.pkg} @ (${lastBgEvent.x}, ${lastBgEvent.y})`,
+        `后台时间: ${lastBgEvent.ts}`,
+        `WS: ${extra}`
+      ];
+      touchInfo.textContent = lines.join('\n');
+    }
+
+    function updateBackground(eventName, pkg, x, y) {
+      lastBgEvent = {
+        event: eventName || '-',
+        pkg: pkg || '-',
+        x: Number.isFinite(x) ? x : '-',
+        y: Number.isFinite(y) ? y : '-',
+        ts: new Date().toLocaleTimeString('zh-CN')
+      };
+      renderTouchInfo(ws && ws.readyState === 1 ? `已连接 127.0.0.1:${wsPort}` : '未连接');
+    }
+
+    function updatePoint(x, y, btn) {
+      lastPoint = {
+        x,
+        y,
+        btn,
+        ts: new Date().toLocaleTimeString('zh-CN')
+      };
+      renderTouchInfo(ws && ws.readyState === 1 ? `已连接 127.0.0.1:${wsPort}` : '未连接');
+    }
+
+    function sendMouseSubscription() {
+      if (!ws || ws.readyState !== 1) return;
+      ws.send(new Uint8Array([0xA0, 0x01, 60]));
+    }
+
+    function connectTouchWs() {
+      if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+      ws = new WebSocket(`ws://127.0.0.1:${wsPort}`);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        sendMouseSubscription();
+        if (wsKeepAlive) clearInterval(wsKeepAlive);
+        wsKeepAlive = setInterval(sendMouseSubscription, 20000);
+        renderTouchInfo(`已连接 127.0.0.1:${wsPort}`);
+      };
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === 'string') {
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload && payload.type === 'bg') {
+              updateBackground(payload.event, payload.package, Number(payload.x), Number(payload.y));
+            }
+          } catch (e) {
+            // ignore malformed text payload
+          }
+          return;
+        }
+
+        const buf = event.data;
+        if (!(buf instanceof ArrayBuffer) || buf.byteLength < 14) return;
+        const dv = new DataView(buf);
+        if (dv.getUint8(0) !== 0x01) return;
+
+        const x = dv.getInt32(1, true);
+        const y = dv.getInt32(5, true);
+        const btn = dv.getUint8(13);
+        updatePoint(x, y, btn);
+      };
+
+      ws.onclose = () => {
+        renderTouchInfo('断开，2 秒后重连');
+        if (wsKeepAlive) {
+          clearInterval(wsKeepAlive);
+          wsKeepAlive = null;
+        }
+        setTimeout(connectTouchWs, 2000);
+      };
+
+      ws.onerror = () => {
+        renderTouchInfo('连接异常');
+      };
+    }
+
+    // Native service also pushes updates directly to this hook for immediate feedback.
+    window.__POTDROID_TOUCH__ = (x, y, btn) => updatePoint(x, y, btn);
+    window.__POTDROID_BG__ = (jsonString) => {
+      try {
+        const payload = JSON.parse(jsonString);
+        if (payload && payload.type === 'bg') {
+          updateBackground(payload.event, payload.package, Number(payload.x), Number(payload.y));
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    function tick() {
+      const now = new Date();
+      el.textContent = `当前时间 ${now.toLocaleTimeString('zh-CN')} | Web 内容半透明显示中`;
+    }
+
+    tick();
+    setInterval(tick, 1000);
+    connectTouchWs();
+  </script>
+</body>
+</html>

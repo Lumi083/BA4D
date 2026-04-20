@@ -1,0 +1,521 @@
+<!--
+name: {"zh":"鼠标特效（BASpark 复刻）", "en":"BASpark Replica (BA Mouse FX)"}
+tag: streaming tool, interactive, input, win, mac
+description:
+securityLevel: script
+overflow: hidden
+width: 9999
+height: 9999
+opacity: 100
+pinned: true
+$num | fpsLimit | {"zh":"帧率限制（重启后生效）","en":"FPS Limit"} | (15~240, log) : 60
+$rgba | color | {"zh":"主颜色", "en":"Main Color"} : rgba(87, 164, 255, 1)
+$rgba | clickColor | {"zh":"点击圆圈颜色", "en":"Click Circle Color"} : rgba(87, 164, 255, 1)
+$num | scale | {"zh":"UI缩放", "en":"Scale"} | (0.5~3.0, step=0.1) : 1.5
+$num | speed | {"zh":"速度", "en":"Speed"} | (0.2~3.0, step=0.1) : 1.0
+$num | maxTrail | {"zh":"拖尾长度", "en":"Max Trail"} | (0~64, log) : 12
+$num | sparkRate | {"zh":"拖尾粒子概率", "en":"Trail Spark Rate"} | (0~1.0, step=0.01) : 0.10
+$bool | alwaysTrail | {"zh":"常驻拖尾", "en":"Always Trail"} : false
+$num | dpr | {"zh":"偏移补偿（DPR%）", "en":"DPR Scale %"} | (0~500, int) : 0
+$num | opacityMul | {"zh":"透明度乘数", "en":"Opacity"} | (0.0~1.0, step=0.05) : 1.0
+$num | port | {"zh":"端口（别乱改）", "en":"Port"} | (0~65535, int) : 48291
+-->
+<!-- Original: DoomVoss / BASpark -->
+<!-- Copyright (c) 2025-2026 Mira team. -->
+
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent; overflow: hidden; pointer-events: none;
+  }
+  canvas {
+    position: fixed; left: 0; top: 0;
+    width: 100%; height: 100%; display: block;
+  }
+</style>
+
+<canvas id="sparkCanvas"></canvas>
+
+<script>
+(function() {
+  const cfg = {
+    port: 48291, color: 'rgba(35, 207, 255, 1)', clickColor: 'rgba(87, 144, 255, 1)', scale: 1.0, opacityMul: 1.0,
+    speed: 1.0, maxTrail: 24, sparkRate: 0.15, alwaysTrail: false, dpr: 0, fpsLimit: 30
+  };
+  // PotDroid default Mimosa WS port.
+  cfg.port = 42891;
+  window.cfg = cfg;
+  let displayOrigin = { x: window.screenX || 0, y: window.screenY || 0 };
+
+  function applyDisplayOrigin(origin) {
+    if (!origin || typeof origin !== 'object') return;
+    const x = Number(origin.x);
+    const y = Number(origin.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    displayOrigin = { x, y };
+
+  }
+
+  const canvas = document.getElementById('sparkCanvas');
+  const ctx = canvas.getContext('2d');
+  let ws = null, subInterval = null, usingMiraInput = false;
+  let delayedTouchFrame = null;
+
+  function applyCfgPatch(patch) {
+    if (!patch || typeof patch !== 'object') return;
+    Object.assign(cfg, patch);
+  }
+
+  window.__POTDROID_SET_CFG__ = applyCfgPatch;
+  window.__POTDROID_CFG__ = cfg;
+
+  if (window.__MIRAAPI_PROPS__) applyCfgPatch(window.__MIRAAPI_PROPS__);
+  try { window.parent.postMessage({ type: '__MIRAAPI_REQUEST_PROPS__', id: window.__MIRAAPI_ELEMENT_ID__ }, '*'); } catch (_) {}
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === '__MIRAAPI_DISPLAY_ORIGIN__') {
+      applyDisplayOrigin(e.data.origin);
+      return;
+    }
+    if (e.data && e.data.type === '__MIRAAPI_PROPS__') applyCfgPatch(e.data.props || {});
+    if (e.data && e.data.type === '__POTDROID_SET_CFG__') applyCfgPatch(e.data.props || e.data.cfg || e.data);
+  });
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function effectiveDpr() {
+    const base = window.devicePixelRatio || 1, p = Number(cfg.dpr);
+    return (Number.isFinite(p) && p > 0) ? clamp(p, 0, 500) / 100 : base;
+  }
+
+  function parseColorTriplet(input) {
+    const s = String(input || '').trim();
+    
+    // 1. 优先解析所有长度（3, 4, 6, 8位）的 Hex 颜色
+    const hex = s.replace(/^#/, '');
+    if (/^[0-9a-fA-F]{3,8}$/.test(hex)) {
+      if (hex.length === 3 || hex.length === 4) {
+        return `${parseInt(hex[0]+hex[0],16)},${parseInt(hex[1]+hex[1],16)},${parseInt(hex[2]+hex[2],16)}`;
+      } else if (hex.length === 6 || hex.length === 8) {
+        return `${parseInt(hex.slice(0,2),16)},${parseInt(hex.slice(2,4),16)},${parseInt(hex.slice(4,6),16)}`;
+      }
+    }
+
+    // 2. 对于 rgba、hsl 或变量名，委托给浏览器 DOM 引擎做100%可靠的原生计算
+    const d = document.createElement('div');
+    d.style.display = 'none';
+    d.style.color = s;
+    document.body.appendChild(d);
+    const comp = window.getComputedStyle(d).color;
+    document.body.removeChild(d);
+
+    const m = comp.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    return m ? `${m[1]},${m[2]},${m[3]}` : '87,164,255';
+  }
+
+  function resize() {
+    const dpr = effectiveDpr();
+    canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+    canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  class BASparkReplica {
+    constructor() {
+      this.sparkPool = []; this.wavePool = []; this.trailPool = [];
+      this.waves = []; this.sparks = []; this.trail = [];
+      this.isDown = false; this.lastPos = null;
+      this.baseFrameMs = 1000 / 60; this.maxDeltaMs = 250; // 提升休眠上限以兼容低帧率限制
+      this.lastFrameTime = performance.now();
+      requestAnimationFrame((now) => this.loop(now));
+    }
+
+    alpha(v) { return clamp(v * this.opacityMul, 0, 1); }
+
+    randomRingSegments() {
+      const segs = [];
+      for (let i = 0; i < 3; i++) {
+        segs.push({
+          off: Math.random() * Math.PI * 2,
+          len: (1.2 + Math.random() * 0.14) * Math.PI,
+          radiusJitter: (Math.random() - 0.5) * 0.22
+        });
+      }
+      return segs;
+    }
+
+    drawSmoothTrail(points) {
+      const n = points.length;
+      if (n < 2) return;
+
+      const head = points[n - 1];
+      const tail = points[0];
+      const gradient = ctx.createLinearGradient(head.x, head.y, tail.x, tail.y);
+      const minAlpha = 0.5;
+      const mix = this.mixColor || (this.colorArr ? `${Math.round((255 + this.colorArr[0]) / 2)},${Math.round((255 + this.colorArr[1]) / 2)},${Math.round((255 + this.colorArr[2]) / 2)}` : '255,255,255');
+      gradient.addColorStop(0, `rgba(${this.color},1)`);
+      gradient.addColorStop(0.06, `rgba(${this.color},1)`);
+      gradient.addColorStop(1, `rgba(${this.color},${minAlpha})`);
+
+      // Draw as a single filled polygon (variable width) to avoid overlapping strokes
+      const prevComp = ctx.globalCompositeOperation;
+      ctx.globalCompositeOperation = 'source-over';
+      // apply colored glow (use main color as shadow to make white trail glow with object color)
+      const _prevShadowColor = ctx.shadowColor;
+      const _prevShadowBlur = ctx.shadowBlur;
+
+      const baseWidth = 2 * this.scale;
+      ctx.shadowColor = `rgba(${this.color}, 1)`;
+      ctx.shadowBlur = baseWidth * 0.2;
+      ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+      const left = [];
+      const right = [];
+
+      for (let i = 0; i < n; i++) {
+        const p = points[i];
+        const prev = points[Math.max(0, i - 1)];
+        const next = points[Math.min(n - 1, i + 1)];
+        let dx = next.x - prev.x;
+        let dy = next.y - prev.y;
+        const l = Math.hypot(dx, dy) || 1;
+        dx /= l; dy /= l;
+        const nx = -dy, ny = dx;
+        const life = clamp(p.life || 0, 0, 1);
+        const w = baseWidth * life;
+        left.push({ x: p.x + nx * w * 0.5, y: p.y + ny * w * 0.5 });
+        right.push({ x: p.x - nx * w * 0.5, y: p.y - ny * w * 0.5 });
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(left[0].x, left[0].y);
+      for (let i = 1; i < left.length; i++) ctx.lineTo(left[i].x, left[i].y);
+      for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
+      ctx.closePath();
+
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.globalCompositeOperation = prevComp;
+      // restore previous shadow settings
+      ctx.shadowColor = _prevShadowColor || 'transparent';
+      ctx.shadowBlur = _prevShadowBlur || 0;
+      ctx.lineCap = 'butt';
+    }
+
+    drawTaperedArc(cx, cy, radius, start, end, maxWidth, alpha, mix = 0) {
+      const sweep = end - start;
+      if (sweep <= 0 || alpha <= 0 || maxWidth <= 0) return;
+
+      const steps = Math.max(10, Math.ceil(Math.abs(sweep) / (Math.PI / 36)));
+      const tipWidth = Math.max(0.12, maxWidth * 0.10);
+      ctx.beginPath();
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const ang = start + sweep * t;
+        const taper = Math.pow(Math.sin(Math.PI * t), 0.75);
+        const w = Math.max(tipWidth, maxWidth * taper);
+        const rOuter = radius + w * 0.5;
+        const x = cx + Math.cos(ang) * rOuter;
+        const y = cy + Math.sin(ang) * rOuter;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+
+      for (let i = steps; i >= 0; i--) {
+        const t = i / steps;
+        const ang = start + sweep * t;
+        const taper = Math.pow(Math.sin(Math.PI * t), 0.75);
+        const w = Math.max(tipWidth, maxWidth * taper);
+        const rInner = Math.max(0.01, radius - w * 0.5);
+        ctx.lineTo(cx + Math.cos(ang) * rInner, cy + Math.sin(ang) * rInner);
+      }
+
+      ctx.closePath();
+
+      // 淡出时颜色从白色 -> 主色过渡，mix 使用外部的 ringProg (0..1)
+      const tMix = clamp(Number(mix) || 0, 0, 1) * 0.8;
+      const white = [245, 248, 252];
+      const main = (this.colorArr && this.colorArr.length === 3) ? this.colorArr : this.color.split(',').map((v) => parseInt(v, 10));
+      const rr = Math.round(white[0] * (1 - tMix) + main[0] * tMix);
+      const gg = Math.round(white[1] * (1 - tMix) + main[1] * tMix);
+      const bb = Math.round(white[2] * (1 - tMix) + main[2] * tMix);
+      // apply glow matching main color for white->main tapered arcs
+      const _prevShadowColor_arc = ctx.shadowColor;
+      const _prevShadowBlur_arc = ctx.shadowBlur;
+      const shadowAlpha = clamp(this.alpha(alpha) * 3, 0, 1);
+      ctx.shadowColor = `rgba(${rr},${gg},${bb}, ${shadowAlpha})`;
+      ctx.shadowBlur = maxWidth * 3 * (this.scale || 1);
+      ctx.fillStyle = `rgba(${rr},${gg},${bb},${this.alpha(alpha)})`;
+      ctx.fill();
+    }
+
+    drawSparkTriangle(size, inverted) {
+      const h = Math.sqrt(3) * 0.5 * size;
+      const tip = (2 * h) / 3;
+      const base = h / 3;
+
+      ctx.beginPath();
+      if (inverted) {
+        ctx.moveTo(0, tip);
+        ctx.lineTo(size * 0.5, -base);
+        ctx.lineTo(-size * 0.5, -base);
+      } else {
+        ctx.moveTo(0, -tip);
+        ctx.lineTo(size * 0.5, base);
+        ctx.lineTo(-size * 0.5, base);
+      }
+      ctx.closePath();
+    }
+
+    syncOptions() {
+      // 只有在颜色属性被外部改变时才触发解析计算（极大降低CPU占用）
+      if (this._lastColor !== cfg.color) {
+        this.color = parseColorTriplet(cfg.color);
+        this.colorArr = this.color.split(',').map((v) => parseInt(v, 10));
+        // mixed color = 50% white + 50% main
+        const ma = this.colorArr;
+        this.mixColorArr = [
+          Math.round(ma[0]||0),
+          Math.round(ma[1]||0),
+          Math.round(ma[2]||0)
+        ];
+        this.mixColor = `${this.mixColorArr[0]},${this.mixColorArr[1]},${this.mixColorArr[2]}`;
+        this._lastColor = cfg.color;
+      }
+      if (this._lastClickColor !== cfg.clickColor) {
+        this.clickColor = parseColorTriplet(cfg.clickColor);
+        this._lastClickColor = cfg.clickColor;
+      }
+      this.scale = clamp(Number(cfg.scale) || 1.5, 0.5, 3.0);
+      this.opacityMul = clamp(Number(cfg.opacityMul) || 1.0, 0.1, 1.0);
+      this.speed = clamp(Number(cfg.speed) || 1.0, 0.2, 3.0);
+      this.maxTrail = clamp(Math.trunc(Number(cfg.maxTrail) || 16), 4, 64);
+      let sr = Number(cfg.sparkRate);
+      this.sparkRate = Number.isFinite(sr) ? clamp(sr, 0, 1) : 0.30;
+      this.alwaysTrail = Boolean(cfg.alwaysTrail);
+      this.fpsLimit = Math.max(0, Math.trunc(Number(cfg.fpsLimit) || 0));
+    }
+
+    feed(x, y, btns) {
+      this.syncOptions();
+      const leftDown = (btns & 1) !== 0;
+
+      if (leftDown && !this.isDown) { this.lastPos = { x, y }; this.boom(x, y); }
+      if (!leftDown && !this.alwaysTrail) { this.isDown = false; return; }
+
+      const p = { x, y };
+      if (!this.lastPos) this.lastPos = p;
+      if (Math.hypot(p.x - this.lastPos.x, p.y - this.lastPos.y) > 2) {
+        // 使用对象池优化垃圾回收
+        let t = this.trailPool.pop() || {};
+        t.x = p.x; t.y = p.y; t.life = 1;
+        this.trail.push(t);
+        while (this.trail.length > this.maxTrail) this.trailPool.push(this.trail.shift());
+        this.lastPos = p;
+
+        if (Math.random() < this.sparkRate) {
+          const a = Math.random() * Math.PI * 2, speedAdjust = this.scale / 1.5;
+          let s = this.sparkPool.pop() || {};
+          s.x = p.x + Math.cos(a) * 10 * this.scale; s.y = p.y + Math.sin(a) * 10 * this.scale;
+          s.vx = Math.cos(a) * 1.3 * speedAdjust; s.vy = Math.sin(a) * 1.3 * speedAdjust;
+          s.rot = (Math.random() - 0.5) * 0.20; s.rs = 0;
+          s.s0 = 15 * this.scale; s.s = s.s0;
+          s.a = 0.78; s.f = 0.95;
+          s.flip = Math.random() < 0.5;
+          s.flashDelay = 0.20;
+          s.flashSeed = 9;
+          this.sparks.push(s);
+        }
+      }
+      this.isDown = leftDown;
+    }
+
+    boom(x, y) {
+      const scale = this.scale, speedAdjust = scale / 1.5;
+      let wave = this.wavePool.pop() || { ring: {} };
+      wave.x = x; wave.y = y; wave.life = 0; wave.max = 17; wave.r = 0;
+      wave.ring.segs = this.randomRingSegments();
+      wave.ring.ang = Math.random() * Math.PI * 2;
+      wave.ring.life = 0; wave.ring.maxLife = 32; wave.ring.rs = 0.08;
+      wave.ring.radiusSeed = Math.random() * Math.PI * 2;
+      this.waves.push(wave);
+
+      for (let i = 0; i < 4; i++) {
+        const a = Math.random() * Math.PI * 2, speed = (3 + Math.random() * 2) * speedAdjust;
+        let s = this.sparkPool.pop() || {};
+        s.x = x + Math.cos(a) * 8 * this.scale; s.y = y + Math.sin(a) * 8 * this.scale;
+        s.vx = Math.cos(a) * speed; s.vy = Math.sin(a) * speed;
+        s.rot = (Math.random() - 0.5) * 0.35; s.rs = 0;
+        s.s0 = (9 + Math.random() * 9) * scale; s.s = s.s0;
+        s.a = 1; s.f = 0.9;
+        s.flip = Math.random() < 0.5;
+        s.flashDelay = 0.20;
+        s.flashSeed = 9;
+        this.sparks.push(s);
+      }
+    }
+
+    loop(now) {
+      this.syncOptions();
+
+      // FPS 帧率限制机制，包含 1ms 容差以避免显示器微小抖动导致的掉帧
+      const elapsed = now - this.lastFrameTime;
+      if (this.fpsLimit > 0 && elapsed < (1000 / this.fpsLimit) - 1) {
+        requestAnimationFrame((nextNow) => this.loop(nextNow));
+        return;
+      }
+
+      const deltaMs = Math.min(elapsed, this.maxDeltaMs);
+      this.lastFrameTime = now;
+      const frameScale = (deltaMs / this.baseFrameMs) * this.speed;
+
+      if (this.waves.length > 0 || this.sparks.length > 0 || this.trail.length > 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.globalCompositeOperation = 'lighter';
+
+        for (let i = this.trail.length - 1; i >= 0; i--) {
+          const t = this.trail[i];
+          t.life -= (this.alwaysTrail ? 0.085 : (this.isDown ? 0.085 : 0.18)) * frameScale;
+          if (t.life <= 0) {
+            this.trailPool.push(t);
+            this.trail.splice(i, 1);
+          }
+        }
+
+        if (this.trail.length > 1) this.drawSmoothTrail(this.trail);
+
+        for (let i = this.waves.length - 1; i >= 0; i--) {
+          const w = this.waves[i];
+          w.life += frameScale;
+          const progress = w.life / w.max, ease = 1 - Math.pow(1 - Math.min(progress, 1), 3);
+          w.r = 23 * this.scale * ease;
+          const alpha = Math.max(0, 1 - Math.min(1, progress * 0.9));
+
+          if (alpha > 0) {
+            ctx.beginPath(); ctx.arc(w.x, w.y, w.r * 1.1, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${this.clickColor || this.color},${this.alpha(alpha)})`; ctx.fill();
+          }
+
+          const r = w.ring; r.life += frameScale;
+          const ringProg = Math.min(r.life / r.maxLife, 1);
+          const ringEase = Math.pow(ringProg, 1.7);
+          r.ang -= r.rs * frameScale;
+
+          for (let j = 0; j < r.segs.length; j++) {
+            const seg = r.segs[j], shrink = Math.max(0, 1 - ringEase);
+            const len = seg.len * shrink, start = r.ang + seg.off;
+            const radiusJitter = (seg.radiusJitter || 0) * (1 - ringEase);
+            const radiusLerp = 0.7 + 0.3 * Math.sin((r.radiusSeed || 0) + (r.life * 0.18) + j * 1.3);
+            const ringRadius = w.r + (3 * this.scale) * radiusLerp;
+            const ringAlpha = 1;
+            this.drawTaperedArc(w.x, w.y, ringRadius, start, start + len, 2 * this.scale, ringAlpha, ringEase);
+          }
+
+          if (progress >= 1 && ringProg >= 1) {
+            this.wavePool.push(w);
+            this.waves.splice(i, 1);
+          }
+        }
+
+        for (let i = this.sparks.length - 1; i >= 0; i--) {
+          const s = this.sparks[i];
+          s.x += s.vx * frameScale; s.y += s.vy * frameScale;
+          s.vx *= Math.pow(s.f, frameScale); s.vy *= Math.pow(s.f, frameScale);
+          s.rot += s.rs * frameScale;
+          s.s *= Math.pow(0.95, frameScale);
+          s.a -= 0.019 * frameScale;
+
+          if (s.a <= 0 || s.s <= 0.35) {
+            this.sparkPool.push(s);
+            this.sparks.splice(i, 1);
+            continue;
+          }
+
+          const shrinkProgress = 1 - (s.s / Math.max(0.0001, s.s0 || s.s));
+          const shouldFlash = shrinkProgress >= (s.flashDelay || 0.3);
+          const flickerPhase = Math.floor((1 - s.a) * 28 + (s.flashSeed || 0)) % 6;
+          // const useMainColor = shouldFlash && flickerPhase === 1;
+
+          ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot);
+          this.drawSparkTriangle(s.s, Boolean(s.flip));
+           if (shouldFlash && flickerPhase < 2) {
+             const mix = this.mixColor || (this.colorArr ? `${Math.round((255 + this.colorArr[0]) / 2)},${Math.round((255 + this.colorArr[1]) / 2)},${Math.round((255 + this.colorArr[2]) / 2)}` : '255,255,255');
+             ctx.fillStyle = `rgba(${mix},${this.alpha(Math.min(1, s.a + 0.08))})`;
+           } else if (shouldFlash && flickerPhase > 2 && flickerPhase < 5) {
+             ctx.fillStyle = `rgba(${this.color},0.2)`;
+           } else {
+             ctx.fillStyle = `rgba(255,255,255,${this.alpha(s.a)})`;
+           }
+          ctx.fill(); ctx.restore();
+        }
+
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      requestAnimationFrame((nextNow) => this.loop(nextNow));
+    }
+  }
+
+  const spark = new BASparkReplica();
+
+  // Compatibility hooks for immediate events pushed from native side.
+  function scheduleDelayedTouch(x, y, btnMask) {
+    delayedTouchFrame = { x: Number(x) || 0, y: Number(y) || 0, btnMask: Number(btnMask) || 0 };
+    requestAnimationFrame(() => {
+      const frame = delayedTouchFrame;
+      delayedTouchFrame = null;
+      if (!frame) return;
+      const dpr = effectiveDpr();
+      const localX = frame.x / dpr - displayOrigin.x;
+      const localY = frame.y / dpr - displayOrigin.y;
+      spark.feed(localX, localY, frame.btnMask);
+    });
+  }
+
+  window.__POTDROID_TOUCH__ = (x, y, btnMask) => {
+    scheduleDelayedTouch(x, y, btnMask);
+  };
+  window.__POTDROID_BG__ = () => {};
+
+  function sendWsSubscription() { if (ws && ws.readyState === 1) ws.send(new Uint8Array([0xA0, 0x01, cfg.fpsLimit])); }
+
+  function applyMouseFrame(buffer, source) {
+    if (!buffer || buffer.byteLength < 14) return;
+    const dv = new DataView(buffer);
+    if (dv.getUint8(0) !== 0x01) return;
+
+    const dpr = effectiveDpr();
+    const localX = (dv.getInt32(1, true) / dpr) - displayOrigin.x;
+    const localY = (dv.getInt32(5, true) / dpr) - displayOrigin.y;
+    if (source === 'mira') usingMiraInput = true;
+    spark.feed(localX, localY, dv.getUint8(13));
+  }
+
+  function connectFallbackWs() {
+    if (usingMiraInput || ws) return;
+    ws = new WebSocket(`ws://127.0.0.1:${cfg.port}`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {
+      sendWsSubscription();
+      if (subInterval) clearInterval(subInterval);
+      subInterval = setInterval(sendWsSubscription, 20000);
+    };
+    ws.onclose = () => { ws = null; if (!usingMiraInput) setTimeout(connectFallbackWs, 2000); };
+    ws.onmessage = (e) => applyMouseFrame(e.data, 'ws');
+  }
+
+  window.addEventListener('message', (e) => {
+    const d = e && e.data;
+    if (d && typeof d === 'object' && d.type === '__MIRAAPI_INPUT__' && d.id === window.__MIRAAPI_ELEMENT_ID__ && d.device === 'mouse') {
+      applyMouseFrame(d.payload, 'mira');
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (subInterval) clearInterval(subInterval);
+    if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+  });
+
+  setTimeout(() => { if (!usingMiraInput) connectFallbackWs(); }, 800);
+})();
+</script>

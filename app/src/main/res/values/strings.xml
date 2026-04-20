@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BASpark4Droid</string>
+    <string name="title">BASpark4Droid</string>
+    <string name="description">by 微波西米露@bilibili</string>
+    <string name="overlay_permission_required">请先授予悬浮窗权限</string>
+    <string name="overlay_permission_missing">悬浮窗权限：未授权</string>
+    <string name="overlay_permission_granted">悬浮窗权限：已授权</string>
+    <string name="open_overlay_permission">打开悬浮窗权限页</string>
+    <string name="shizuku_permission_missing">Shizuku 权限：未授权（无法抓取后台输入事件）</string>
+    <string name="shizuku_permission_granted">Shizuku 权限：已授权</string>
+    <string name="open_shizuku_permission">申请 Shizuku 权限</string>
+    <string name="shizuku_permission_optional_tip">授予 Shizuku 权限，以 shell 权限后台抓取输入事件</string>
+    <string name="download_shizuku">请先下载 Shizuku</string>
+    <string name="open_bilibili">在 bilibili 关注我</string>
+    <string name="open_star">点个 Star</string>
+    <string name="baspark_config_title">BASpark 组件配置</string>
+    <string name="baspark_config_description">这些参数会保存到本机，并在启动悬浮窗时下发给 BA Spark 页面。</string>
+    <string name="fps_limit_hint">帧率限制（15-240）</string>
+    <string name="main_color_hint">主颜色（rgba 或 Hex）</string>
+    <string name="main_color_presets">主颜色预设</string>
+    <string name="click_color_hint">点击圆圈颜色（rgba 或 Hex）</string>
+    <string name="click_color_presets">点击圆圈预设</string>
+    <string name="scale_hint">UI 缩放（0.5-3.0）</string>
+    <string name="speed_hint">速度（0.2-3.0）</string>
+    <string name="max_trail_hint">拖尾长度（0-64）</string>
+    <string name="spark_rate_hint">拖尾粒子概率（0-1.0）</string>
+    <string name="always_trail_label">常驻拖尾</string>
+    <string name="dpr_hint">偏移补偿（DPR%）</string>
+    <string name="opacity_mul_hint">透明度乘数（0-1.0）</string>
+    <string name="port_hint">端口（与 websocket 服务一致）</string>
+    <string name="baspark_config_note">提示：端口请保持默认值 42891。</string>
+    <string name="reset_baspark_config">恢复默认设置</string>
+    <string name="start_overlay">保存配置并启动悬浮窗</string>
+    <string name="stop_overlay">停止悬浮窗</string>
+    <string name="overlay_notification_channel_name">Overlay Runner</string>
+    <string name="overlay_notification_title">PotDroid Overlay Running</string>
+    <string name="overlay_notification_text">正在显示半透明 Web 悬浮窗</string>
+</resources>
