@@ -1,0 +1,68 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build with Gradle
+      run: ./gradlew assembleRelease
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release
+        path: app/build/outputs/apk/release/*.apk
+        retention-days: 30
+
+    - name: Get version name
+      id: version
+      run: |
+        VERSION=$(grep "versionName" app/build.gradle | awk '{print $2}' | tr -d '"')
+        echo "name=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create Draft Release (develop)
+      if: github.ref == 'refs/heads/develop'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.name }}-dev-${{ github.run_number }}
+        name: Development Build v${{ steps.version.outputs.name }}-dev-${{ github.run_number }}
+        draft: true
+        prerelease: true
+        files: app/build/outputs/apk/release/*.apk
+        body: |
+          Development build from develop branch
+          Commit: ${{ github.sha }}
+
+    - name: Create Release (main)
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.name }}
+        name: Release v${{ steps.version.outputs.name }}
+        draft: false
+        prerelease: false
+        files: app/build/outputs/apk/release/*.apk
+        body: |
+          Release build
+          Commit: ${{ github.sha }}

@@ -9,6 +9,14 @@ val copyLauncherIcon = tasks.register<Copy>("copyLauncherIcon") {
     rename { "ic_launcher.png" }
 }
 
+val syncVersionToAssets = tasks.register("syncVersionToAssets") {
+    doLast {
+        val versionFile = file("src/main/assets/version.txt")
+        versionFile.parentFile.mkdirs()
+        versionFile.writeText(android.defaultConfig.versionName ?: "unknown")
+    }
+}
+
 android {
     namespace = "com.miradesktop.ba4d"
     compileSdk = 34
@@ -18,7 +26,7 @@ android {
         minSdk = 26
         targetSdk = 33
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -55,7 +63,7 @@ android {
 }
 
 tasks.named("preBuild") {
-    dependsOn(copyLauncherIcon)
+    dependsOn(copyLauncherIcon, syncVersionToAssets)
 }
 
 dependencies {
