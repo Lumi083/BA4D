@@ -1,14 +1,78 @@
-name: Build APK
+name: Build & Release BA4D
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Prepare release (create tag and release)
+  # ───────────────────────────────────────────────────────────────────────────
+  prepare-release:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Read version from build.gradle.kts
+        id: version
+        run: |
+          VERSION=$(./gradlew -q printVersion | tail -n1)
+          TAG="v$VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Preparing release for $TAG"
+
+      - name: Check if should create release
+        id: check
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Recreate release
+        if: steps.check.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+
+          # Delete existing release if it exists
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+          # Create new release
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            gh release create "$TAG" \
+              --title "Development Build $TAG" \
+              --notes "Development build from develop branch
+          Commit: ${{ github.sha }}" \
+              --prerelease
+          else
+            gh release create "$TAG" \
+              --title "BA4D $TAG" \
+              --generate-notes
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Build Android APK
+  # ───────────────────────────────────────────────────────────────────────────
   build:
+    needs: [prepare-release]
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -28,41 +92,19 @@ jobs:
     - name: Build with Gradle
       run: ./gradlew assembleRelease
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-release
-        path: app/build/outputs/apk/release/*.apk
-        retention-days: 30
-
-    - name: Get version name
-      id: version
+    - name: Upload APK to release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ needs.prepare-release.outputs.tag }}
       run: |
-        VERSION=$(grep 'versionName = ' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)".*/\1/')
-        echo "name=$VERSION" >> $GITHUB_OUTPUT
+        FILES=()
+        while IFS= read -r -d '' f; do
+          FILES+=("$f")
+        done < <(find app/build/outputs/apk/release -type f -name '*.apk' -print0)
 
-    - name: Create Draft Release (develop)
-      if: github.ref == 'refs/heads/develop'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ steps.version.outputs.name }}
-        name: Development Build v${{ steps.version.outputs.name }}
-        draft: true
-        prerelease: true
-        files: app/build/outputs/apk/release/*.apk
-        body: |
-          Development build from develop branch
-          Commit: ${{ github.sha }}
+        if [ ${#FILES[@]} -eq 0 ]; then
+          echo "ERROR: No APK files found" >&2
+          exit 1
+        fi
 
-    - name: Create Release (main)
-      if: github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ steps.version.outputs.name }}
-        name: Release v${{ steps.version.outputs.name }}
-        draft: false
-        prerelease: false
-        files: app/build/outputs/apk/release/*.apk
-        body: |
-          Release build
-          Commit: ${{ github.sha }}
+        gh release upload "$TAG" "${FILES[@]}" --clobber

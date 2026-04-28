@@ -66,6 +66,12 @@ tasks.named("preBuild") {
     dependsOn(copyLauncherIcon, syncVersionToAssets)
 }
 
+tasks.register("printVersion") {
+    doLast {
+        println(android.defaultConfig.versionName)
+    }
+}
+
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
