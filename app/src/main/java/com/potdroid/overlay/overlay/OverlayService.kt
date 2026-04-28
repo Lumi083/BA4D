@@ -22,14 +22,18 @@ import androidx.core.app.NotificationCompat
 import com.potdroid.overlay.nativews.AndroidMimosaServer
 import com.potdroid.overlay.R
 import com.potdroid.overlay.shizuku.ShizukuMimosaCollector
+import com.potdroid.overlay.mira.MiraAPIAdapter
 import org.json.JSONObject
+import kotlin.math.max
 
 class OverlayService : Service() {
 
     companion object {
         const val EXTRA_URL = "extra_url"
         const val EXTRA_BLOCK_REGIONS = "extra_block_regions"
-        const val MIMOSA_TOUCH_WS_PORT = 42891
+        const val EXTRA_PROJECTION_RESULT_CODE = "extra_projection_result_code"
+        const val EXTRA_PROJECTION_DATA = "extra_projection_data"
+        const val MIMOSA_TOUCH_WS_PORT = 48291
 
         private const val NOTIFICATION_CHANNEL_ID = "overlay_runner"
         private const val NOTIFICATION_ID = 7
@@ -41,6 +45,13 @@ class OverlayService : Service() {
     private var mimosaServer: AndroidMimosaServer? = null
     private var mimosaServerPort: Int = -1
     private var shizukuCollector: ShizukuMimosaCollector? = null
+    private var miraAdapter: MiraAPIAdapter? = null
+    private var screenSampler: ScreenSampler? = null
+    private var config: BASparkConfig? = null
+    private var currentR = 0f
+    private var currentG = 0f
+    private var currentB = 0f
+    private var targetColor = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -48,15 +59,33 @@ class OverlayService : Service() {
         ensureNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
-        val config = loadBasparkConfig()
-        ensureMimosaServer(config.port)
+        config = loadBasparkConfig()
+        ensureMimosaServer(config!!.port)
         startShizukuCollectorIfPossible()
+
+        if (config!!.adaptiveColor) {
+            val resultCode = intent?.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1) ?: -1
+            val data = intent?.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
+            android.util.Log.d("OverlayService", "adaptiveColor check: resultCode=$resultCode, data=$data, resultCode!=-1=${resultCode != -1}, data!=null=${data != null}")
+            if (data != null) {
+                val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                val metrics = resources.displayMetrics
+                screenSampler = ScreenSampler(this).apply {
+                    start(resultCode, data, metrics.widthPixels, metrics.heightPixels)
+                }
+                getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "等待触摸检测").apply()
+            } else {
+                getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "未授权屏幕捕获").apply()
+            }
+        } else {
+            getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "已禁用").apply()
+        }
 
         removeOverlay()
         createOverlay(
             inputUrl = intent?.getStringExtra(EXTRA_URL),
             blockRegionsSpec = intent?.getStringExtra(EXTRA_BLOCK_REGIONS),
-            config = config
+            config = config!!
         )
 
         return START_STICKY
@@ -67,6 +96,8 @@ class OverlayService : Service() {
         removeOverlay()
         shizukuCollector?.stop()
         shizukuCollector = null
+        screenSampler?.stop()
+        screenSampler = null
         mimosaServer?.stopSafe()
         mimosaServer = null
         mimosaServerPort = -1
@@ -94,7 +125,6 @@ class OverlayService : Service() {
 
         val overlayWebView = WebView(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            alpha = 0.78f
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -107,8 +137,18 @@ class OverlayService : Service() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    pushConfigToDemo(config)
+                    android.util.Log.d("OverlayService", "Page loaded: $url")
+
+                    // Set element ID for MiraAPI
+                    evaluateJavascript("window.__MIRAAPI_ELEMENT_ID__ = 'baspark-overlay';", null)
+
+                    miraAdapter = MiraAPIAdapter(this@apply, "baspark-overlay")
+                    pushConfigViaMira(config)
                 }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                WebView.setWebContentsDebuggingEnabled(true)
             }
 
             loadUrl(inputUrl ?: "file:///android_asset/ba-spark-replica.mira.html")
@@ -118,17 +158,15 @@ class OverlayService : Service() {
         windowManager?.addView(overlayWebView, params)
         webView = overlayWebView
 
-        pushConfigToDemo(config)
-
         addBlockingRegions(type, parseBlockRegions(blockRegionsSpec))
     }
 
     private fun ensureMimosaServer(port: Int) {
-        if (mimosaServer != null && mimosaServerPort == port) return
-
-        mimosaServer?.stopSafe()
-        mimosaServer = AndroidMimosaServer(port).also { it.startSafe() }
-        mimosaServerPort = port
+        // Disabled: using MiraAPI instead of WebSocket
+        // if (mimosaServer != null && mimosaServerPort == port) return
+        // mimosaServer?.stopSafe()
+        // mimosaServer = AndroidMimosaServer(port).also { it.startSafe() }
+        // mimosaServerPort = port
     }
 
     private fun loadBasparkConfig(): BASparkConfig {
@@ -136,10 +174,20 @@ class OverlayService : Service() {
         return BASparkConfig.fromPreferences(prefs)
     }
 
-    private fun pushConfigToDemo(config: BASparkConfig) {
-        val escaped = JSONObject.quote(config.toJsonObject().toString())
-        val js = "window.__POTDROID_SET_CFG__ && window.__POTDROID_SET_CFG__(JSON.parse($escaped));"
-        webView?.post { webView?.evaluateJavascript(js, null) }
+    private fun pushConfigViaMira(config: BASparkConfig) {
+        val configMap = mapOf(
+            "fpsLimit" to config.fpsLimit,
+            "color" to config.color,
+            "scale" to config.scale,
+            "speed" to config.speed,
+            "maxTrail" to config.maxTrail,
+            "sparkRate" to config.sparkRate,
+            "alwaysTrail" to config.alwaysTrail,
+            "dpr" to config.dpr,
+            "opacityMul" to config.opacityMul,
+            "port" to config.port
+        )
+        miraAdapter?.sendConfig(configMap)
     }
 
     private fun addBlockingRegions(type: Int, regions: List<BlockRegionDp>) {
@@ -175,23 +223,52 @@ class OverlayService : Service() {
     private fun onBlockRegionTouch(event: MotionEvent?) {
         if (event == null) return
 
-        val action = event.actionMasked
-        val btnMask = if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) 0 else 1
         val x = event.rawX.toInt()
         val y = event.rawY.toInt()
+        val action = event.actionMasked
+        val pressed = action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL
 
-        mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
-        pushTouchPointToDemo(x = x, y = y, btnMask = btnMask)
+        if (config?.adaptiveColor == true && screenSampler != null) {
+            val samples = listOf(
+                screenSampler?.sampleAt(x, y),
+                screenSampler?.sampleAt(x - 50, y - 50),
+                screenSampler?.sampleAt(x + 50, y - 50),
+                screenSampler?.sampleAt(x - 50, y + 50),
+                screenSampler?.sampleAt(x + 50, y + 50)
+            ).filterNotNull()
+
+            if (samples.isNotEmpty()) {
+                val avgR = samples.map { it.first }.average().toFloat()
+                val avgG = samples.map { it.second }.average().toFloat()
+                val avgB = samples.map { it.third }.average().toFloat()
+
+                currentR = currentR * 0.7f + avgR * 0.3f
+                currentG = currentG * 0.7f + avgG * 0.3f
+                currentB = currentB * 0.7f + avgB * 0.3f
+
+                val baseColor = config?.color ?: "rgba(87, 164, 255, 1)"
+                val colorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(baseColor)
+                val (r, g, b) = if (colorMatch != null) {
+                    Triple(colorMatch.groupValues[1].toInt(), colorMatch.groupValues[2].toInt(), colorMatch.groupValues[3].toInt())
+                } else {
+                    Triple(87, 164, 255)
+                }
+
+                val newR = (r + currentR * 255).toInt().coerceIn(0, 255)
+                val newG = (g + currentG * 255).toInt().coerceIn(0, 255)
+                val newB = (b + currentB * 255).toInt().coerceIn(0, 255)
+                val newColor = "rgba($newR, $newG, $newB, 1)"
+
+                if (newColor != targetColor) {
+                    targetColor = newColor
+                    miraAdapter?.sendConfig(mapOf("color" to newColor))
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", newColor).apply()
+                }
+            }
+        }
+
+        miraAdapter?.sendMouseInput(x = x, y = y, pressed = pressed)
     }
-
-    private fun pushTouchPointToDemo(x: Int, y: Int, btnMask: Int) {
-        val js = "window.__POTDROID_TOUCH__ && window.__POTDROID_TOUCH__($x,$y,$btnMask);"
-        webView?.post { webView?.evaluateJavascript(js, null) }
-    }
-
-//    private fun onBackgroundEvent(event: BackgroundEventHub.BackgroundEvent) {
-//        // Replaced by Shizuku-driven background collection path.
-//    }
 
     private fun startShizukuCollectorIfPossible() {
         if (shizukuCollector != null) return
@@ -200,10 +277,53 @@ class OverlayService : Service() {
 
         shizukuCollector = ShizukuMimosaCollector(
             context = this,
-            onPoint = { x, y, pressed ->
+            fpsLimit = config?.fpsLimit ?: 60,
+            onPointer = { pointerId, x, y, pressed ->
                 val btnMask = if (pressed) 1 else 0
                 mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
-                pushTouchPointToDemo(x = x, y = y, btnMask = btnMask)
+                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
+                if (config?.adaptiveColor == true && screenSampler != null) {
+                    val samples = listOf(
+                        screenSampler?.sampleAt(x, y),
+                        screenSampler?.sampleAt(x - 50, y - 50),
+                        screenSampler?.sampleAt(x + 50, y - 50),
+                        screenSampler?.sampleAt(x - 50, y + 50),
+                        screenSampler?.sampleAt(x + 50, y + 50)
+                    ).filterNotNull()
+
+                    if (samples.isNotEmpty()) {
+                        val avgR = samples.map { it.first }.average().toFloat()
+                        val avgG = samples.map { it.second }.average().toFloat()
+                        val avgB = samples.map { it.third }.average().toFloat()
+
+                        currentR = currentR * 0.7f + avgR * 0.3f
+                        currentG = currentG * 0.7f + avgG * 0.3f
+                        currentB = currentB * 0.7f + avgB * 0.3f
+
+                        val baseColor = config?.color ?: "rgba(87, 164, 255, 1)"
+                        val colorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(baseColor)
+                        val (r, g, b) = if (colorMatch != null) {
+                            Triple(colorMatch.groupValues[1].toInt(), colorMatch.groupValues[2].toInt(), colorMatch.groupValues[3].toInt())
+                        } else {
+                            Triple(87, 164, 255)
+                        }
+
+                        fun hardLight(blend: Float, base: Float): Float {
+                            return max(max(1f - 2f * (1f - base) * (1f - blend), base), blend) + base * 0.15f
+                        }
+// 使用示例
+                        val newR = (hardLight(currentR, r / 255f) * 255).toInt().coerceIn(0, 255)
+                        val newG = (hardLight(currentG, g / 255f) * 255).toInt().coerceIn(0, 255)
+                        val newB = (hardLight(currentB, b / 255f) * 255).toInt().coerceIn(0, 255)
+                        val trailColor = "rgba($newR, $newG, $newB, 1)"
+
+                        if (trailColor != targetColor) {
+                            targetColor = trailColor
+                            miraAdapter?.sendConfig(mapOf("color" to baseColor, "trailColor" to trailColor))
+                            getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", trailColor).apply()
+                        }
+                    }
+                }
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 val json = JSONObject()
@@ -217,15 +337,8 @@ class OverlayService : Service() {
                     .put("ts", System.currentTimeMillis())
                     .toString()
                 mimosaServer?.publishBackgroundEvent(json)
-                pushBackgroundEventToDemo(json)
             }
         ).also { it.start() }
-    }
-
-    private fun pushBackgroundEventToDemo(json: String) {
-        val escaped = JSONObject.quote(json)
-        val js = "window.__POTDROID_BG__ && window.__POTDROID_BG__($escaped);"
-        webView?.post { webView?.evaluateJavascript(js, null) }
     }
 
     private fun removeOverlay() {

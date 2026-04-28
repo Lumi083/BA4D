@@ -25,8 +25,9 @@ import kotlin.math.roundToInt
  */
 class ShizukuMimosaCollector(
     private val context: Context,
-    private val onPoint: (x: Int, y: Int, pressed: Boolean) -> Unit,
-    private val onBackgroundLog: (eventName: String, detail: String, x: Int, y: Int) -> Unit
+    private val onPointer: (pointerId: Int, x: Int, y: Int, pressed: Boolean) -> Unit,
+    private val onBackgroundLog: (eventName: String, detail: String, x: Int, y: Int) -> Unit,
+    private val fpsLimit: Int = 60
 ) {
 
     private data class AxisRange(
@@ -46,12 +47,21 @@ class ShizukuMimosaCollector(
         val topInset: Int
     )
 
-    private data class InputState(
+    private data class SlotState(
         var x: Int = -1,
         var y: Int = -1,
         var pressed: Boolean = false,
         var dirty: Boolean = false,
-        var lastUpdateMs: Long = 0
+        var lastUpdateMs: Long = 0,
+        var lastEmittedX: Int = -1,
+        var lastEmittedY: Int = -1,
+        var lastEmittedPressed: Boolean = false
+    )
+
+    private data class DeviceState(
+        var currentSlot: Int = 0,
+        var lastUpdateMs: Long = 0,
+        val slots: MutableMap<Int, SlotState> = mutableMapOf()
     )
 
     companion object {
@@ -87,9 +97,11 @@ class ShizukuMimosaCollector(
     @Volatile
     private var axisCalibrations: Map<String, AxisRange> = emptyMap()
 
-    private val stateByDevice = mutableMapOf<String, InputState>()
+    private val stateByDevice = mutableMapOf<String, DeviceState>()
     private var preferredDevicePath: String? = null
     private var lastMoveLogMs = 0L
+    private var lastEmitMs = 0L
+    private val minEmitIntervalMs = (1000.0 / fpsLimit).toLong()
 
     fun start() {
         if (!isShizukuReady() || !hasShizukuPermission()) return
@@ -139,26 +151,47 @@ class ShizukuMimosaCollector(
         val valueHexOrWord = eventMatch.groupValues[4]
 
         val now = SystemClock.elapsedRealtime()
-        val state = stateByDevice.getOrPut(devicePath) { InputState() }
+        val deviceState = stateByDevice.getOrPut(devicePath) { DeviceState() }
 
         when (eventType) {
             "EV_ABS" -> {
                 when (code) {
+                    "ABS_MT_SLOT" -> {
+                        parseInt(valueHexOrWord)?.let { slot ->
+                            deviceState.currentSlot = slot.coerceAtLeast(0)
+                        }
+                    }
+
+                    "ABS_MT_TRACKING_ID" -> {
+                        val slot = currentSlotState(deviceState)
+                        parseInt(valueHexOrWord)?.let { trackingId ->
+                            slot.pressed = trackingId >= 0
+                            slot.dirty = true
+                            slot.lastUpdateMs = now
+                            deviceState.lastUpdateMs = now
+                            maybeSwitchPreferredDevice(devicePath, slot, now)
+                        }
+                    }
+
                     "ABS_MT_POSITION_X", "ABS_X" -> {
                         parseInt(valueHexOrWord)?.let { x ->
-                            state.x = x
-                            state.dirty = true
-                            state.lastUpdateMs = now
-                            maybeSwitchPreferredDevice(devicePath, state, now)
+                            val slot = currentSlotState(deviceState)
+                            slot.x = x
+                            slot.dirty = true
+                            slot.lastUpdateMs = now
+                            deviceState.lastUpdateMs = now
+                            maybeSwitchPreferredDevice(devicePath, slot, now)
                         }
                     }
 
                     "ABS_MT_POSITION_Y", "ABS_Y" -> {
                         parseInt(valueHexOrWord)?.let { y ->
-                            state.y = y
-                            state.dirty = true
-                            state.lastUpdateMs = now
-                            maybeSwitchPreferredDevice(devicePath, state, now)
+                            val slot = currentSlotState(deviceState)
+                            slot.y = y
+                            slot.dirty = true
+                            slot.lastUpdateMs = now
+                            deviceState.lastUpdateMs = now
+                            maybeSwitchPreferredDevice(devicePath, slot, now)
                         }
                     }
                 }
@@ -169,24 +202,29 @@ class ShizukuMimosaCollector(
                     val down = valueHexOrWord.equals("DOWN", true) || valueHexOrWord == "1" || valueHexOrWord == "00000001"
                     val up = valueHexOrWord.equals("UP", true) || valueHexOrWord == "0" || valueHexOrWord == "00000000"
                     if (down || up) {
-                        state.pressed = down
-                        state.dirty = true
-                        state.lastUpdateMs = now
-                        maybeSwitchPreferredDevice(devicePath, state, now)
-                        emitIfReady(devicePath, if (down) "DOWN" else "UP", force = true)
+                        val slot = currentSlotState(deviceState)
+                        slot.pressed = down
+                        slot.dirty = true
+                        slot.lastUpdateMs = now
+                        deviceState.lastUpdateMs = now
+                        maybeSwitchPreferredDevice(devicePath, slot, now)
                     }
                 }
             }
 
             "EV_SYN" -> {
                 if (code == "SYN_REPORT") {
-                    emitIfReady(devicePath, "MOVE", force = false)
+                    emitDirtySlots(devicePath, force = false)
                 }
             }
         }
     }
 
-    private fun maybeSwitchPreferredDevice(devicePath: String, state: InputState, now: Long) {
+    private fun currentSlotState(deviceState: DeviceState): SlotState {
+        return deviceState.slots.getOrPut(deviceState.currentSlot) { SlotState() }
+    }
+
+    private fun maybeSwitchPreferredDevice(devicePath: String, state: SlotState, now: Long) {
         val current = preferredDevicePath
         if (current == null) {
             preferredDevicePath = devicePath
@@ -203,8 +241,15 @@ class ShizukuMimosaCollector(
         }
     }
 
-    private fun emitIfReady(devicePath: String, eventName: String, force: Boolean) {
+    private fun emitDirtySlots(devicePath: String, force: Boolean) {
         val now = SystemClock.elapsedRealtime()
+
+        // Throttle emissions based on fpsLimit
+        if (!force && now - lastEmitMs < minEmitIntervalMs) {
+            return
+        }
+        lastEmitMs = now
+
         val preferred = preferredDevicePath
         if (preferred != null && preferred != devicePath) {
             val preferredState = stateByDevice[preferred]
@@ -214,23 +259,39 @@ class ShizukuMimosaCollector(
             onBackgroundLog("SHIZUKU_DEVICE", "fallback:$preferred->$devicePath", 0, 0)
         }
 
-        val state = stateByDevice[devicePath] ?: return
-        if (state.x < 0 || state.y < 0) return
-        if (!state.dirty && !force) return
+        val deviceState = stateByDevice[devicePath] ?: return
+        val screen = resolveScreenGeometry()
 
-        val mapped = mapToDisplay(state.x, state.y, axisCalibrations[devicePath], resolveScreenGeometry())
-        onPoint(mapped.first, mapped.second, state.pressed)
+        deviceState.slots.forEach { (slotId, state) ->
+            if (!force && !state.dirty) return@forEach
 
-        if (eventName == "MOVE") {
-            if (now - lastMoveLogMs >= MOVE_LOG_INTERVAL_MS) {
-                onBackgroundLog(eventName, "getevent:$devicePath", mapped.first, mapped.second)
-                lastMoveLogMs = now
+            val rawX = if (state.x >= 0) state.x else state.lastEmittedX
+            val rawY = if (state.y >= 0) state.y else state.lastEmittedY
+            if (rawX < 0 || rawY < 0) return@forEach
+
+            val mapped = mapToDisplay(rawX, rawY, axisCalibrations[devicePath], screen)
+            onPointer(slotId, mapped.first, mapped.second, state.pressed)
+
+            val eventName = when {
+                !state.pressed -> "UP"
+                !state.lastEmittedPressed -> "DOWN"
+                else -> "MOVE"
             }
-        } else {
-            onBackgroundLog(eventName, "getevent:$devicePath", mapped.first, mapped.second)
-        }
 
-        state.dirty = false
+            if (eventName == "MOVE") {
+                if (now - lastMoveLogMs >= MOVE_LOG_INTERVAL_MS) {
+                    onBackgroundLog(eventName, "getevent:$devicePath#$slotId", mapped.first, mapped.second)
+                    lastMoveLogMs = now
+                }
+            } else {
+                onBackgroundLog(eventName, "getevent:$devicePath#$slotId", mapped.first, mapped.second)
+            }
+
+            state.lastEmittedX = mapped.first
+            state.lastEmittedY = mapped.second
+            state.lastEmittedPressed = state.pressed
+            state.dirty = false
+        }
     }
 
     private fun mapToDisplay(rawX: Int, rawY: Int, axisRange: AxisRange?, screen: ScreenGeometry): Pair<Int, Int> {
@@ -284,18 +345,14 @@ class ShizukuMimosaCollector(
         val rotation = display.rotation
 
         val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-        var topInset = if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
+        val physicalTopInset = if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
 
-        // If the app completely fills the screen without top insets (e.g. fullscreen mode completely hiding the status bar)
-        if (realMetrics.heightPixels == appMetrics.heightPixels) {
-            topInset = 0
-        }
-
-        var leftInset = 0
-        // On ROTATION_270, the nav bar (if virtual buttons) shifts to the logical left side. 
-        // We know its width by the difference between realWidth and appWidth.
-        if (rotation == Surface.ROTATION_270 && realMetrics.widthPixels > appMetrics.widthPixels) {
-            leftInset = realMetrics.widthPixels - appMetrics.widthPixels
+        val (leftInset, topInset) = when (rotation) {
+            Surface.ROTATION_0 -> Pair(0, if (realMetrics.heightPixels == appMetrics.heightPixels) 0 else physicalTopInset)
+            Surface.ROTATION_90 -> Pair(physicalTopInset, 0)
+            Surface.ROTATION_180 -> Pair(0, 0)
+            Surface.ROTATION_270 -> Pair(0, if (realMetrics.heightPixels > appMetrics.heightPixels) realMetrics.heightPixels - appMetrics.heightPixels else 0)
+            else -> Pair(0, 0)
         }
 
         return ScreenGeometry(

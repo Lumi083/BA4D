@@ -1,0 +1,335 @@
+<!--
+name: {"zh":"鼠标特效（轻量版）", "en":"BASpark Lite"}
+tag: streaming tool, interactive, input, win, mac
+description: 轻量级版本，保留视觉效果但大幅降低渲染开销
+securityLevel: script
+overflow: hidden
+width: 9999
+height: 9999
+opacity: 100
+pinned: true
+$rgba | color | {"zh":"主颜色", "en":"Main Color"} : rgba(87, 164, 255, 1)
+$num | scale | {"zh":"UI缩放", "en":"Scale"} | (0.5~3.0, step=0.1) : 1.5
+$num | speed | {"zh":"速度", "en":"Speed"} | (0.2~3.0, step=0.1) : 1.0
+$num | maxTrail | {"zh":"拖尾长度", "en":"Max Trail"} | (4~32, log) : 12
+$num | opacityMul | {"zh":"透明度乘数", "en":"Opacity"} | (0.0~1.0, step=0.05) : 1.0
+$num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
+-->
+
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent; overflow: hidden; pointer-events: none;
+  }
+  canvas {
+    position: fixed; left: 0; top: 0;
+    width: 100%; height: 100%; display: block;
+  }
+</style>
+
+<canvas id="sparkCanvas"></canvas>
+
+<script>
+(function() {
+  const cfg = {
+    port: 48291, color: 'rgba(87, 164, 255, 1)', trailColor: null, baseColor: null, scale: 1.5, opacityMul: 1.0,
+    speed: 1.0, maxTrail: 12, alwaysTrail: false, dpr: 0, fpsLimit: 60
+  };
+  let displayOrigin = { x: window.screenX || 0, y: window.screenY || 0 };
+
+  const canvas = document.getElementById('sparkCanvas');
+  const ctx = canvas.getContext('2d');
+  let ws = null, subInterval = null, usingMiraInput = false;
+
+  if (window.__MIRAAPI_PROPS__) Object.assign(cfg, window.__MIRAAPI_PROPS__);
+  try { window.parent.postMessage({ type: '__MIRAAPI_REQUEST_PROPS__', id: window.__MIRAAPI_ELEMENT_ID__ }, '*'); } catch (_) {}
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === '__MIRAAPI_DISPLAY_ORIGIN__') {
+      if (e.data.origin && typeof e.data.origin === 'object') {
+        const x = Number(e.data.origin.x), y = Number(e.data.origin.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) displayOrigin = { x, y };
+      }
+      return;
+    }
+    if (e.data && e.data.type === '__MIRAAPI_PROPS__') Object.assign(cfg, e.data.props || {});
+  });
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function effectiveDpr() {
+    const base = window.devicePixelRatio || 1, p = Number(cfg.dpr);
+    return (Number.isFinite(p) && p > 0) ? clamp(p, 0, 500) / 100 : base;
+  }
+
+  function parseColor(input) {
+    const s = String(input || '').trim().replace(/^#/, '');
+    if (/^[0-9a-fA-F]{3,8}$/.test(s)) {
+      if (s.length === 3 || s.length === 4) {
+        return `${parseInt(s[0]+s[0],16)},${parseInt(s[1]+s[1],16)},${parseInt(s[2]+s[2],16)}`;
+      } else if (s.length === 6 || s.length === 8) {
+        return `${parseInt(s.slice(0,2),16)},${parseInt(s.slice(2,4),16)},${parseInt(s.slice(4,6),16)}`;
+      }
+    }
+    const d = document.createElement('div');
+    d.style.display = 'none'; d.style.color = input;
+    document.body.appendChild(d);
+    const comp = window.getComputedStyle(d).color;
+    document.body.removeChild(d);
+    const m = comp.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    return m ? `${m[1]},${m[2]},${m[3]}` : '87,164,255';
+  }
+
+  function resize() {
+    const dpr = effectiveDpr();
+    canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+    canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  class BASparkLite {
+    constructor() {
+      this.waves = []; this.sparks = []; this.pointerStates = new Map();
+      this.lastFrameTime = performance.now();
+      this.color = '87,164,255'; this._lastColor = null;
+      requestAnimationFrame((now) => this.loop(now));
+    }
+
+    syncOptions() {
+      if (this._lastColor !== cfg.color || this._lastTrailColor !== cfg.trailColor || this._lastBaseColor !== cfg.baseColor) {
+        this.color = parseColor(cfg.color);
+        this.trailColor = cfg.trailColor ? parseColor(cfg.trailColor) : this.color;
+        this.baseColor = cfg.baseColor ? parseColor(cfg.baseColor) : this.color;
+        this._lastColor = cfg.color;
+        this._lastTrailColor = cfg.trailColor;
+        this._lastBaseColor = cfg.baseColor;
+      }
+      this.scale = clamp(Number(cfg.scale) || 1.5, 0.5, 3.0);
+      this.opacityMul = clamp(Number(cfg.opacityMul) || 1.0, 0.1, 1.0);
+      this.speed = clamp(Number(cfg.speed) || 1.0, 0.2, 3.0);
+      this.maxTrail = clamp(Math.trunc(Number(cfg.maxTrail) || 12), 4, 32);
+      this.alwaysTrail = Boolean(cfg.alwaysTrail);
+      this.fpsLimit = Math.max(0, Math.trunc(Number(cfg.fpsLimit) || 0));
+    }
+
+    feed(pointerId, x, y, pressed) {
+      this.syncOptions();
+      let state = this.pointerStates.get(pointerId);
+      if (!state) {
+        state = { isDown: false, lastPos: null, trail: [] };
+        this.pointerStates.set(pointerId, state);
+      }
+      if (pressed && !state.isDown) { state.lastPos = { x, y }; this.boom(x, y); }
+      if (!pressed && !this.alwaysTrail) { state.isDown = false; state.lastPos = null; return; }
+
+      const p = { x, y };
+      if (!state.lastPos) state.lastPos = p;
+      const pointerCount = this.pointerStates.size;
+      const minDist = 2 * Math.max(1, pointerCount / 2);
+      const maxLen = Math.max(4, Math.floor(this.maxTrail / Math.max(1, pointerCount / 2)));
+
+      if (Math.hypot(p.x - state.lastPos.x, p.y - state.lastPos.y) > minDist) {
+        state.trail.push({ x: p.x, y: p.y, life: 1 });
+        while (state.trail.length > maxLen) state.trail.shift();
+        state.lastPos = p;
+      }
+      state.isDown = pressed;
+    }
+
+    drawTaperedArc(cx, cy, radius, start, end, maxWidth, alpha) {
+      const sweep = end - start;
+      if (sweep <= 0 || alpha <= 0 || maxWidth <= 0) return;
+      const steps = Math.max(10, Math.ceil(Math.abs(sweep) / (Math.PI / 36)));
+      const tipWidth = Math.max(0.12, maxWidth * 0.10);
+      ctx.beginPath();
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps, ang = start + sweep * t;
+        const taper = Math.pow(Math.sin(Math.PI * t), 0.75);
+        const w = Math.max(tipWidth, maxWidth * taper);
+        const rOuter = radius + w * 0.5;
+        if (i === 0) ctx.moveTo(cx + Math.cos(ang) * rOuter, cy + Math.sin(ang) * rOuter);
+        else ctx.lineTo(cx + Math.cos(ang) * rOuter, cy + Math.sin(ang) * rOuter);
+      }
+      for (let i = steps; i >= 0; i--) {
+        const t = i / steps, ang = start + sweep * t;
+        const taper = Math.pow(Math.sin(Math.PI * t), 0.75);
+        const w = Math.max(tipWidth, maxWidth * taper);
+        const rInner = Math.max(0.01, radius - w * 0.5);
+        ctx.lineTo(cx + Math.cos(ang) * rInner, cy + Math.sin(ang) * rInner);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(255,255,255,${clamp(alpha * this.opacityMul, 0, 1)})`;
+      ctx.fill();
+    }
+
+    boom(x, y) {
+      const segs = [];
+      for (let i = 0; i < 3; i++) {
+        segs.push({ off: Math.random() * Math.PI * 2, len: (1.2 + Math.random() * 0.14) * Math.PI });
+      }
+      this.waves.push({ x, y, life: 0, max: 17, r: 0, ring: { segs, ang: Math.random() * Math.PI * 2, life: 0, maxLife: 32 } });
+      for (let i = 0; i < 3; i++) {
+        const a = Math.random() * Math.PI * 2, speed = (2 + Math.random()) * this.scale / 1.5;
+        this.sparks.push({
+          x: x + Math.cos(a) * 8 * this.scale, y: y + Math.sin(a) * 8 * this.scale,
+          vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+          s: (6 + Math.random() * 6) * this.scale * 1.3, a: 1, up: Math.random() < 0.5
+        });
+      }
+    }
+
+    loop(now) {
+      this.syncOptions();
+
+      const elapsed = now - this.lastFrameTime;
+      if (this.fpsLimit > 0 && elapsed < (1000 / this.fpsLimit) - 1) {
+        requestAnimationFrame((nextNow) => this.loop(nextNow));
+        return;
+      }
+
+      const deltaMs = Math.min(elapsed, 250);
+      this.lastFrameTime = now;
+      const frameScale = (deltaMs / 16.67) * this.speed;
+
+      const hasPointerTrails = this.pointerStates.size > 0;
+      if (this.waves.length > 0 || this.sparks.length > 0 || hasPointerTrails) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const trailC = this.trailColor || '255,255,255';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        for (const [pointerId, state] of this.pointerStates) {
+          const trail = state.trail;
+          const decayRate = (this.alwaysTrail ? 0.085 : (state.isDown ? 0.085 : 0.18)) * frameScale;
+
+          for (let i = trail.length - 1; i >= 0; i--) {
+            trail[i].life -= decayRate;
+            if (trail[i].life <= 0) trail.splice(i, 1);
+          }
+
+          if (trail.length > 1) {
+            const len = trail.length - 1;
+            for (let i = 1; i < trail.length; i++) {
+              ctx.lineWidth = 3 * this.scale * (i / len);
+              ctx.beginPath();
+              ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+              ctx.lineTo(trail[i].x, trail[i].y);
+              ctx.strokeStyle = `rgba(${trailC},1)`;
+              ctx.stroke();
+            }
+          }
+
+          if (!state.isDown && trail.length === 0) this.pointerStates.delete(pointerId);
+        }
+
+        for (let i = this.waves.length - 1; i >= 0; i--) {
+          const w = this.waves[i];
+          w.life += frameScale;
+          const progress = w.life / w.max, ease = 1 - Math.pow(1 - Math.min(progress, 1), 3);
+          w.r = 26 * this.scale * ease;
+          const alpha = Math.max(0, 1 - Math.min(1, progress * 0.9));
+          if (alpha > 0) {
+            const baseCol = this.baseColor || this.color;
+            ctx.beginPath(); ctx.arc(w.x, w.y, w.r * 1.1, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${baseCol},${clamp(alpha * this.opacityMul, 0, 1)})`; ctx.fill();
+          }
+          const r = w.ring; r.life += frameScale;
+          const ringProg = Math.min(r.life / r.maxLife, 1), ringEase = Math.pow(ringProg, 1.4);
+          r.ang -= 0.08 * frameScale;
+          for (let j = 0; j < r.segs.length; j++) {
+            const seg = r.segs[j], shrink = Math.max(0, 1 - ringEase);
+            const len = seg.len * shrink, start = r.ang + seg.off;
+            const ringAlpha = Math.min(1, (1 - ringEase) * 1.12 + 0.45);
+            this.drawTaperedArc(w.x, w.y, w.r + 3 * this.scale, start, start + len, 2 * this.scale, ringAlpha);
+          }
+          if (progress >= 1 && ringProg >= 1) this.waves.splice(i, 1);
+        }
+
+        const trailCol = this.trailColor || '255,255,255';
+        for (let i = this.sparks.length - 1; i >= 0; i--) {
+          const s = this.sparks[i];
+          s.x += s.vx * frameScale; s.y += s.vy * frameScale;
+          s.vx *= Math.pow(0.92, frameScale); s.vy *= Math.pow(0.92, frameScale);
+          s.s *= Math.pow(0.95, frameScale);
+          s.a -= 0.019 * frameScale;
+          if (s.a <= 0 || s.s <= 0.5) { this.sparks.splice(i, 1); continue; }
+          const h = s.s * 0.866;
+          ctx.beginPath();
+          if (s.up) {
+            ctx.moveTo(s.x, s.y - h * 0.67);
+            ctx.lineTo(s.x - s.s * 0.5, s.y + h * 0.33);
+            ctx.lineTo(s.x + s.s * 0.5, s.y + h * 0.33);
+          } else {
+            ctx.moveTo(s.x, s.y + h * 0.67);
+            ctx.lineTo(s.x - s.s * 0.5, s.y - h * 0.33);
+            ctx.lineTo(s.x + s.s * 0.5, s.y - h * 0.33);
+          }
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${trailCol},${clamp(s.a * this.opacityMul, 0, 1)})`;
+          ctx.fill();
+        }
+
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      requestAnimationFrame((nextNow) => this.loop(nextNow));
+    }
+  }
+
+  const spark = new BASparkLite();
+
+  function sendWsSubscription() { if (ws && ws.readyState === 1) ws.send(new Uint8Array([0xA0, 0x01, cfg.fpsLimit])); }
+
+  function applyPointerFrame(buffer, source) {
+    if (!buffer || buffer.byteLength < 14) return;
+    const dv = new DataView(buffer);
+    const type = dv.getUint8(0);
+    const dpr = effectiveDpr();
+    let pointerId = 0, localX = 0, localY = 0, pressed = false;
+
+    if (type === 0x01) {
+      localX = (dv.getInt32(1, true) / dpr) - displayOrigin.x;
+      localY = (dv.getInt32(5, true) / dpr) - displayOrigin.y;
+      pressed = dv.getUint8(13) !== 0;
+    } else if (type === 0x02) {
+      pointerId = dv.getInt32(1, true);
+      localX = (dv.getInt32(5, true) / dpr) - displayOrigin.x;
+      localY = (dv.getInt32(9, true) / dpr) - displayOrigin.y;
+      pressed = dv.getUint8(13) !== 0;
+    } else {
+      return;
+    }
+
+    if (source === 'mira') usingMiraInput = true;
+    spark.feed(pointerId, localX, localY, pressed);
+  }
+
+  function connectFallbackWs() {
+    if (usingMiraInput || ws) return;
+    ws = new WebSocket(`ws://127.0.0.1:${cfg.port}`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {
+      sendWsSubscription();
+      if (subInterval) clearInterval(subInterval);
+      subInterval = setInterval(sendWsSubscription, 20000);
+    };
+    ws.onclose = () => { ws = null; if (!usingMiraInput) setTimeout(connectFallbackWs, 2000); };
+    ws.onmessage = (e) => applyPointerFrame(e.data, 'ws');
+  }
+
+  window.addEventListener('message', (e) => {
+    const d = e && e.data;
+    if (d && typeof d === 'object' && d.type === '__MIRAAPI_INPUT__' && d.id === window.__MIRAAPI_ELEMENT_ID__ && (d.device === 'mouse' || d.device === 'touch')) {
+      applyPointerFrame(d.payload, 'mira');
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (subInterval) clearInterval(subInterval);
+    if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+  });
+
+  setTimeout(() => { if (!usingMiraInput) connectFallbackWs(); }, 800);
+})();
+</script>

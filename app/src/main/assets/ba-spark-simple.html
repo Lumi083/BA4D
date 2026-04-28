@@ -1,0 +1,108 @@
+<!--
+name: {"zh":"鼠标特效（简化版 - 性能测试）", "en":"BASpark Simple (Perf Test)"}
+tag: streaming tool, interactive, input, win, mac
+description: 简化版本，仅绘制单色圆圈，用于测试是否是HTML渲染导致FPS下降
+securityLevel: script
+overflow: hidden
+width: 9999
+height: 9999
+opacity: 100
+pinned: true
+$num | color | {"zh":"颜色", "en":"Color"} : rgba(87, 164, 255, 1)
+$num | radius | {"zh":"半径", "en":"Radius"} : 8
+-->
+
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent; overflow: hidden; pointer-events: none;
+  }
+  canvas {
+    position: fixed; left: 0; top: 0;
+    width: 100%; height: 100%; display: block;
+  }
+</style>
+
+<canvas id="sparkCanvas"></canvas>
+
+<script>
+(function() {
+  const cfg = {
+    color: 'rgba(87, 164, 255, 1)',
+    trailColor: null,
+    baseColor: null,
+    radius: 8
+  };
+
+  let displayOrigin = { x: window.screenX || 0, y: window.screenY || 0 };
+
+  const canvas = document.getElementById('sparkCanvas');
+  const ctx = canvas.getContext('2d');
+  let mouseX = 0, mouseY = 0, isPressed = false;
+
+  if (window.__MIRAAPI_PROPS__) Object.assign(cfg, window.__MIRAAPI_PROPS__);
+
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === '__MIRAAPI_DISPLAY_ORIGIN__') {
+      if (e.data.origin && typeof e.data.origin === 'object') {
+        const x = Number(e.data.origin.x);
+        const y = Number(e.data.origin.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          displayOrigin = { x, y };
+        }
+      }
+      return;
+    }
+    if (e.data && e.data.type === '__MIRAAPI_PROPS__') Object.assign(cfg, e.data.props || {});
+  });
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (isPressed) {
+      const baseCol = cfg.baseColor || cfg.color;
+      ctx.fillStyle = baseCol;
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, cfg.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+
+  window.addEventListener('message', (e) => {
+    const d = e && e.data;
+    if (d && d.type === '__MIRAAPI_INPUT__' && d.id === window.__MIRAAPI_ELEMENT_ID__) {
+      if (d.device === 'mouse' || d.device === 'touch') {
+        const buffer = d.payload;
+        if (buffer && buffer.byteLength >= 14) {
+          const dv = new DataView(buffer);
+          const type = dv.getUint8(0);
+          const dpr = window.devicePixelRatio || 1;
+
+          if (type === 0x01) {
+            mouseX = (dv.getInt32(1, true) / dpr) - displayOrigin.x;
+            mouseY = (dv.getInt32(5, true) / dpr) - displayOrigin.y;
+          } else if (type === 0x02) {
+            mouseX = (dv.getInt32(5, true) / dpr) - displayOrigin.x;
+            mouseY = (dv.getInt32(9, true) / dpr) - displayOrigin.y;
+          }
+          isPressed = dv.getUint8(13) !== 0;
+        }
+      }
+    }
+  });
+})();
+</script>
