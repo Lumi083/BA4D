@@ -1,13 +1,17 @@
-package com.potdroid.overlay
+package com.miradesktop.ba4d
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.fragment.app.Fragment
-import com.potdroid.overlay.databinding.FragmentAboutBinding
+import com.miradesktop.ba4d.databinding.FragmentAboutBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -68,6 +72,18 @@ class AboutFragment : Fragment() {
         }
         binding.openStarButton.setOnClickListener {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Lumi083/BA4D")))
+        }
+        binding.copyQQGroupButton.setOnClickListener {
+            val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("QQ群号", "214791959")
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(requireContext(), "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+        }
+        binding.openSATmtrButton.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://space.bilibili.com/3493116084488813")))
+        }
+        binding.openDebugButton.setOnClickListener {
+            (activity as? MainActivity)?.openDebugPage()
         }
     }
 

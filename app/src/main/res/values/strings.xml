@@ -3,7 +3,7 @@
     <string name="app_name">BASpark4Droid</string>
     <string name="title">BASpark4Droid</string>
     <string name="description">by 微波西米露@bilibili</string>
-    <string name="risk_warning">此软件进行的提权可能导致暴露账号密码等数据信息，或使得第三方软件获得超规格权限。请勿下载非官方途径的Shizuku和此软件。请勿将本软件与其他未知第三方软件同时运行。本软件无法保证Shizuku的安全性。本软件仅作开发学习用途，不对运行功能做出承诺。若用户知晓潜在风险，方可继续使用此软件，软件作者不为可能造成的损失负责。</string>
+    <string name="risk_warning">请从官网下载Shizuku，本软件需要Shizuku的权限以读取触摸事件。本软件仅用于学习和开发用途。除了检查更新，本软件不会与互联网通信。从“更新”页访问仓库以查看源码。</string>
     <string name="overlay_permission_required">请先授予悬浮窗权限</string>
     <string name="overlay_permission_missing">悬浮窗权限：未授权</string>
     <string name="overlay_permission_granted">悬浮窗权限：已授权</string>
@@ -32,7 +32,8 @@
     <string name="port_hint">端口（与 websocket 服务一致）</string>
     <string name="baspark_config_note">提示：端口请保持默认值 42891。</string>
     <string name="reset_baspark_config">恢复默认设置</string>
-    <string name="start_overlay">保存并启动</string>
+    <string name="start_overlay">启动悬浮窗</string>
+    <string name="restart_overlay">重启悬浮窗</string>
     <string name="stop_overlay">停止悬浮窗</string>
     <string name="overlay_notification_channel_name">Overlay Runner</string>
     <string name="overlay_notification_title">PotDroid Overlay Running</string>

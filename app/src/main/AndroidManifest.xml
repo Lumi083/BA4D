@@ -28,9 +28,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".DebugActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
+            android:authorities="com.miradesktop.ba4d.shizuku"
             android:multiprocess="false"
             android:enabled="true"
             android:exported="true"

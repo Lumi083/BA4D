@@ -1,4 +1,4 @@
-package com.potdroid.overlay.shizuku
+package com.miradesktop.ba4d.shizuku
 
 import android.content.Context
 import android.content.pm.PackageManager

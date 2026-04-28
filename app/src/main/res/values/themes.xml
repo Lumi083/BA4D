@@ -5,4 +5,8 @@
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
+
+    <style name="BottomNavTextStyle" parent="TextAppearance.AppCompat">
+        <item name="android:textSize">12sp</item>
+    </style>
 </resources>

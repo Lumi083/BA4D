@@ -1,4 +1,4 @@
-package com.potdroid.overlay
+package com.miradesktop.ba4d
 
 import android.app.Activity
 import android.content.Context
@@ -14,11 +14,12 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
-import com.potdroid.overlay.databinding.FragmentHomeBinding
-import com.potdroid.overlay.overlay.BASparkConfig
-import com.potdroid.overlay.overlay.OverlayService
-import com.potdroid.overlay.shizuku.ShizukuMimosaCollector
+import com.miradesktop.ba4d.databinding.FragmentHomeBinding
+import com.miradesktop.ba4d.overlay.BASparkConfig
+import com.miradesktop.ba4d.overlay.OverlayService
+import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import rikka.shizuku.Shizuku
+import java.io.File
 
 class HomeFragment : Fragment() {
     private var _binding: FragmentHomeBinding? = null
@@ -34,7 +35,7 @@ class HomeFragment : Fragment() {
             if (pendingStartOverlay) {
                 pendingStartOverlay = false
                 startOverlay()
-                binding.stopOverlayButton.visibility = View.VISIBLE
+                updateStartButtonState()
             }
         } else if (pendingStartOverlay) {
             pendingStartOverlay = false
@@ -64,7 +65,13 @@ class HomeFragment : Fragment() {
             if (ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission())
                 R.string.shizuku_permission_granted else R.string.shizuku_permission_missing
         )
-        binding.stopOverlayButton.visibility = if (isServiceRunning(OverlayService::class.java)) View.VISIBLE else View.GONE
+        updateStartButtonState()
+    }
+
+    private fun updateStartButtonState() {
+        val isRunning = isServiceRunning(OverlayService::class.java)
+        binding.startOverlayButton.text = getString(if (isRunning) R.string.restart_overlay else R.string.start_overlay)
+        binding.stopOverlayButton.visibility = if (isRunning) View.VISIBLE else View.GONE
     }
 
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
@@ -96,18 +103,26 @@ class HomeFragment : Fragment() {
             }
             val config = readConfig()
             BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), config)
-            if (config.adaptiveColor) {
+
+            val isRunning = isServiceRunning(OverlayService::class.java)
+            if (isRunning) {
+                requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
+            }
+
+            if (config.adaptiveColor && !isRunning) {
                 pendingStartOverlay = true
                 val manager = requireContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
             } else {
                 startOverlay()
-                binding.stopOverlayButton.visibility = View.VISIBLE
+                updateStartButtonState()
             }
         }
         binding.stopOverlayButton.setOnClickListener {
             requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
-            binding.stopOverlayButton.visibility = View.GONE
+            projectionResultCode = -1
+            projectionData = null
+            updateStartButtonState()
         }
         binding.openOverlayPermissionButton.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -212,7 +227,18 @@ class HomeFragment : Fragment() {
 
     private fun startOverlay() {
         val startupFile = requireContext().getSharedPreferences("app_prefs", 0).getString("startup_file", null)
-        val url = if (startupFile != null) "file:///android_asset/$startupFile" else "file:///android_asset/ba-spark-lite.mira.html"
+        val url = if (startupFile != null) {
+            // Check if it's a user-created file in filesDir
+            val userFile = File(requireContext().filesDir, startupFile)
+            if (userFile.exists()) {
+                "file://${userFile.absolutePath}"
+            } else {
+                // Fall back to assets (builtin files)
+                "file:///android_asset/$startupFile"
+            }
+        } else {
+            "file:///android_asset/ba-spark-lite.mira.html"
+        }
         val intent = Intent(requireContext(), OverlayService::class.java).apply {
             putExtra(OverlayService.EXTRA_URL, url)
             putExtra(OverlayService.EXTRA_BLOCK_REGIONS, "")

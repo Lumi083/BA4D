@@ -12,7 +12,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="获取与关注"
+            android:text="更新"
             android:textAppearance="@style/TextAppearance.Material3.TitleLarge" />
 
         <Button
@@ -41,7 +41,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="关注作者"
+            android:text="如何加速更新："
             android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
 
         <Button
@@ -58,12 +58,35 @@
             android:layout_marginTop="8dp"
             android:text="@string/open_star" />
 
-        <TextView
+        <Button
+            android:id="@+id/copyQQGroupButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="QQ群: 214791959\n反馈和新功能许愿"
-            android:textSize="13sp" />
+            android:text="Q群: 214791959 (点击复制)" />
+
+        <Button
+            android:id="@+id/openDebugButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="打开调试页"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="友链"
+            android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+
+        <Button
+            android:id="@+id/openSATmtrButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="BASpark by SATmtr@bilibili"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
 
     </LinearLayout>
 </ScrollView>

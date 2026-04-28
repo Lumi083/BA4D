@@ -1,4 +1,4 @@
-package com.potdroid.overlay.overlay
+package com.miradesktop.ba4d.overlay
 
 import android.content.SharedPreferences
 import org.json.JSONObject

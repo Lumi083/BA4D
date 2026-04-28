@@ -15,6 +15,11 @@
             android:text="调试信息"
             android:textAppearance="@style/TextAppearance.Material3.TitleLarge" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="你怎么到这里来了喵？！" />
+
         <Button
             android:id="@+id/refreshDebugButton"
             android:layout_width="match_parent"

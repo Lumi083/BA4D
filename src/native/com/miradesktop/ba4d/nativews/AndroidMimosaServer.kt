@@ -1,4 +1,4 @@
-package com.potdroid.overlay.nativews
+package com.miradesktop.ba4d.nativews
 
 import org.java_websocket.WebSocket
 import org.java_websocket.handshake.ClientHandshake

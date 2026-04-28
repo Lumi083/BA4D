@@ -1,4 +1,4 @@
-package com.potdroid.overlay.overlay
+package com.miradesktop.ba4d.overlay
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -19,10 +19,10 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
-import com.potdroid.overlay.nativews.AndroidMimosaServer
-import com.potdroid.overlay.R
-import com.potdroid.overlay.shizuku.ShizukuMimosaCollector
-import com.potdroid.overlay.mira.MiraAPIAdapter
+import com.miradesktop.ba4d.nativews.AndroidMimosaServer
+import com.miradesktop.ba4d.R
+import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
+import com.miradesktop.ba4d.mira.MiraAPIAdapter
 import org.json.JSONObject
 import kotlin.math.max
 
@@ -101,6 +101,14 @@ class OverlayService : Service() {
         mimosaServer?.stopSafe()
         mimosaServer = null
         mimosaServerPort = -1
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as? android.media.projection.MediaProjectionManager
+            mediaProjectionManager?.getMediaProjection(
+                android.app.Activity.RESULT_OK,
+                android.content.Intent()
+            )?.stop()
+        }
     }
 
     private fun createOverlay(inputUrl: String?, blockRegionsSpec: String?, config: BASparkConfig) {
@@ -133,6 +141,12 @@ class OverlayService : Service() {
             settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.mediaPlaybackRequiresUserGesture = false
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                settings.allowFileAccessFromFileURLs = true
+                settings.allowUniversalAccessFromFileURLs = true
+            }
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {

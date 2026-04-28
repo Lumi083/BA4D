@@ -1,4 +1,4 @@
-package com.potdroid.overlay.mira
+package com.miradesktop.ba4d.mira
 
 import android.util.Base64
 import android.util.Log

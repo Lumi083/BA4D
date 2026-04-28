@@ -1,4 +1,4 @@
-package com.potdroid.overlay
+package com.miradesktop.ba4d
 
 import android.app.ActivityManager
 import android.content.Context
@@ -8,10 +8,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import com.potdroid.overlay.databinding.FragmentDebugBinding
-import com.potdroid.overlay.overlay.BASparkConfig
-import com.potdroid.overlay.overlay.OverlayService
-import com.potdroid.overlay.shizuku.ShizukuMimosaCollector
+import com.miradesktop.ba4d.databinding.FragmentDebugBinding
+import com.miradesktop.ba4d.overlay.BASparkConfig
+import com.miradesktop.ba4d.overlay.OverlayService
+import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 
 class DebugFragment : Fragment() {
     private var _binding: FragmentDebugBinding? = null
@@ -54,7 +54,7 @@ class DebugFragment : Fragment() {
         val config = BASparkConfig.fromPreferences(prefs)
         val currentColor = prefs.getString("current_adaptive_color", "未检测")
 
-        val files = listOf("overlay_demo.html", "ba-spark-replica.mira.html")
+        val files = listOf("ba-spark-simple.html", "ba-spark-lite.mira.html")
         val fileStatus = files.joinToString("\n") { file ->
             val exists = try {
                 requireContext().assets.open(file).use { true }

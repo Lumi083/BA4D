@@ -10,11 +10,11 @@ val copyLauncherIcon = tasks.register<Copy>("copyLauncherIcon") {
 }
 
 android {
-    namespace = "com.potdroid.overlay"
+    namespace = "com.miradesktop.ba4d"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.potdroid.overlay"
+        applicationId = "com.miradesktop.ba4d"
         minSdk = 26
         targetSdk = 33
         versionCode = 1
