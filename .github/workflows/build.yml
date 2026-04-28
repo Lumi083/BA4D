@@ -38,15 +38,15 @@ jobs:
     - name: Get version name
       id: version
       run: |
-        VERSION=$(grep "versionName" app/build.gradle | awk '{print $2}' | tr -d '"')
+        VERSION=$(grep 'versionName = ' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)".*/\1/')
         echo "name=$VERSION" >> $GITHUB_OUTPUT
 
     - name: Create Draft Release (develop)
       if: github.ref == 'refs/heads/develop'
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v${{ steps.version.outputs.name }}-dev-${{ github.run_number }}
-        name: Development Build v${{ steps.version.outputs.name }}-dev-${{ github.run_number }}
+        tag_name: v${{ steps.version.outputs.name }}
+        name: Development Build v${{ steps.version.outputs.name }}
         draft: true
         prerelease: true
         files: app/build/outputs/apk/release/*.apk

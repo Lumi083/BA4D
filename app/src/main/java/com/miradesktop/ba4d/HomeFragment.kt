@@ -109,7 +109,8 @@ class HomeFragment : Fragment() {
                 requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
             }
 
-            if (config.adaptiveColor && !isRunning) {
+            // Request screen capture permission if adaptive color is enabled and we don't have it yet
+            if (config.adaptiveColor && projectionData == null) {
                 pendingStartOverlay = true
                 val manager = requireContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
