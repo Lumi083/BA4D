@@ -244,12 +244,6 @@ class ShizukuMimosaCollector(
     private fun emitDirtySlots(devicePath: String, force: Boolean) {
         val now = SystemClock.elapsedRealtime()
 
-        // Throttle emissions based on fpsLimit
-        if (!force && now - lastEmitMs < minEmitIntervalMs) {
-            return
-        }
-        lastEmitMs = now
-
         val preferred = preferredDevicePath
         if (preferred != null && preferred != devicePath) {
             val preferredState = stateByDevice[preferred]
@@ -261,6 +255,17 @@ class ShizukuMimosaCollector(
 
         val deviceState = stateByDevice[devicePath] ?: return
         val screen = resolveScreenGeometry()
+
+        // Check if any slot has a state change (DOWN/UP) that must be emitted immediately
+        val hasStateChange = deviceState.slots.values.any { state ->
+            state.dirty && state.pressed != state.lastEmittedPressed
+        }
+
+        // Throttle only MOVE events based on fpsLimit, never throttle DOWN/UP
+        if (!force && !hasStateChange && now - lastEmitMs < minEmitIntervalMs) {
+            return
+        }
+        lastEmitMs = now
 
         deviceState.slots.forEach { (slotId, state) ->
             if (!force && !state.dirty) return@forEach

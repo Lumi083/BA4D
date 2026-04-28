@@ -192,6 +192,7 @@ class OverlayService : Service() {
         val configMap = mapOf(
             "fpsLimit" to config.fpsLimit,
             "color" to config.color,
+            "trailColor" to config.trailColor,
             "scale" to config.scale,
             "speed" to config.speed,
             "maxTrail" to config.maxTrail,
@@ -315,17 +316,19 @@ class OverlayService : Service() {
                         currentB = currentB * 0.7f + avgB * 0.3f
 
                         val baseColor = config?.color ?: "rgba(87, 164, 255, 1)"
-                        val colorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(baseColor)
-                        val (r, g, b) = if (colorMatch != null) {
-                            Triple(colorMatch.groupValues[1].toInt(), colorMatch.groupValues[2].toInt(), colorMatch.groupValues[3].toInt())
+                        val initialTrailColor = config?.trailColor ?: "rgba(0, 200, 255, 1)"
+
+                        val trailColorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(initialTrailColor)
+                        val (r, g, b) = if (trailColorMatch != null) {
+                            Triple(trailColorMatch.groupValues[1].toInt(), trailColorMatch.groupValues[2].toInt(), trailColorMatch.groupValues[3].toInt())
                         } else {
-                            Triple(87, 164, 255)
+                            Triple(0, 200, 255)
                         }
 
                         fun hardLight(blend: Float, base: Float): Float {
                             return max(max(1f - 2f * (1f - base) * (1f - blend), base), blend) + base * 0.15f
                         }
-// 使用示例
+
                         val newR = (hardLight(currentR, r / 255f) * 255).toInt().coerceIn(0, 255)
                         val newG = (hardLight(currentG, g / 255f) * 255).toInt().coerceIn(0, 255)
                         val newB = (hardLight(currentB, b / 255f) * 255).toInt().coerceIn(0, 255)
