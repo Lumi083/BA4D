@@ -10,7 +10,7 @@
     <string name="open_accessibility_permission">打开无障碍设置</string>
     <string name="overlay_permission_missing">悬浮窗权限：未授权</string>
     <string name="overlay_permission_granted">悬浮窗权限：已授权</string>
-    <string name="open_overlay_permission">打开悬浮窗权限页</string>
+    <string name="open_overlay_permission">悬浮窗权限页</string>
     <string name="shizuku_permission_missing">Shizuku 权限：未授权（无法抓取后台输入事件）</string>
     <string name="shizuku_permission_granted">Shizuku 权限：已授权</string>
     <string name="open_shizuku_permission">申请 Shizuku 权限</string>
