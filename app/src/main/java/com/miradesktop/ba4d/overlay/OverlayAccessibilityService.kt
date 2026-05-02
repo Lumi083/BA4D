@@ -128,6 +128,8 @@ class OverlayAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         }
+        getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE)
+            .edit().putBoolean(BASparkConfig.KEY_OVERLAY_VISIBLE, false).apply()
     }
 
     private fun startForegroundForMediaProjection() {

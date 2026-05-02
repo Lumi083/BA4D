@@ -115,6 +115,8 @@ class OverlayService : Service() {
                 android.content.Intent()
             )?.stop()
         }
+        getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE)
+            .edit().putBoolean(BASparkConfig.KEY_OVERLAY_VISIBLE, false).apply()
     }
 
     private fun createOverlay(inputUrl: String?, blockRegionsSpec: String?, config: BASparkConfig) {
