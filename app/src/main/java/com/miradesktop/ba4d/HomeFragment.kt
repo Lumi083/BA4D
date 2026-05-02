@@ -2,6 +2,7 @@ package com.miradesktop.ba4d
 
 import android.app.Activity
 import android.content.Context
+import android.content.Context.MODE_PRIVATE
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -31,7 +32,6 @@ class HomeFragment : Fragment() {
     private var projectionData: Intent? = null
     private var pendingStartOverlay = false
     private var pendingUseAccessibility = false
-    private var overlay_visible = false
 
     private val screenCaptureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -93,6 +93,7 @@ class HomeFragment : Fragment() {
         updateStartButtonState()
     }
 
+    //检测无障碍服务是否开启，开启则优先使用无障碍服务模式
     private fun isAccessibilityServiceEnabled(): Boolean {
         val enabledServices = Settings.Secure.getString(
             requireContext().contentResolver,
@@ -103,20 +104,18 @@ class HomeFragment : Fragment() {
         return colonSplitter.contains(targetService)
     }
 
+    //根据服务状态更新开始按钮文本和停止按钮可见性
     private fun updateStartButtonState() {
-        val isAccessibilityRunning = isAccessibilityServiceEnabled() && overlay_visible
-        val isOverlayRunning = isServiceRunning(OverlayService::class.java)
-        val isRunning = isAccessibilityRunning || isOverlayRunning
-
-        binding.startOverlayButton.text = getString(if (isRunning) R.string.restart_overlay else R.string.start_overlay)
-        binding.stopOverlayButton.visibility = if (isRunning) View.VISIBLE else View.GONE
+        binding.startOverlayButton.text = getString(if (isServiceRunning()) R.string.restart_overlay else R.string.start_overlay)
+        binding.stopOverlayButton.visibility = if (isServiceRunning()) View.VISIBLE else View.GONE
     }
 
-    private fun isServiceRunning(serviceClass: Class<*>): Boolean {
-        val manager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        return manager.getRunningServices(Int.MAX_VALUE).any { it.service.className == serviceClass.name }
+    private fun isServiceRunning(): Boolean {
+        val overlay_visible = requireContext()
+            .getSharedPreferences(BASparkConfig.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(BASparkConfig.KEY_OVERLAY_VISIBLE, false)
+        return overlay_visible
     }
-
     private fun loadConfig() = BASparkConfig.fromPreferences(
         requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0)
     )
@@ -154,7 +153,7 @@ class HomeFragment : Fragment() {
                 }
                 requireContext().startService(stopIntent)
             }
-            if (isServiceRunning(OverlayService::class.java)) {
+            if (isServiceRunning()) {
                 requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
             }
 
@@ -178,7 +177,8 @@ class HomeFragment : Fragment() {
             requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
             projectionResultCode = -1
             projectionData = null
-            overlay_visible = false
+            requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE)//把悬浮窗状态保存在配置里，方便其他地方读取
+                .edit().putBoolean(BASparkConfig.KEY_OVERLAY_VISIBLE, false).apply()
             updateStartButtonState()
         }
         binding.openAccessibilityPermissionButton.setOnClickListener {
@@ -285,6 +285,8 @@ class HomeFragment : Fragment() {
         )
     }
 
+    //关键逻辑，根据权限和服务状态决定使用哪种方式启动悬浮窗，并传递必要的参数
+    //最好把个逻辑放在一个单独的类里
     private fun startOverlay(useAccessibility: Boolean = false) {
         val startupFile = requireContext().getSharedPreferences("app_prefs", 0).getString("startup_file", null)
         val url = if (startupFile != null) {
@@ -312,7 +314,7 @@ class HomeFragment : Fragment() {
                 }
             }
             requireContext().startService(intent)
-            overlay_visible = true
+
         } else {
             // Use regular overlay service
             val intent = Intent(requireContext(), OverlayService::class.java).apply {
@@ -323,12 +325,10 @@ class HomeFragment : Fragment() {
                     putExtra(OverlayService.EXTRA_PROJECTION_DATA, projectionData)
                 }
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                requireContext().startForegroundService(intent)
-            } else {
-                requireContext().startService(intent)
-            }
+            requireContext().startForegroundService(intent)
         }
+        requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE)
+            .edit().putBoolean(BASparkConfig.KEY_OVERLAY_VISIBLE, true).apply()
     }
 
     override fun onDestroyView() {

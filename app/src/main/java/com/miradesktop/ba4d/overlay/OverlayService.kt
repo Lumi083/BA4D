@@ -3,6 +3,7 @@ package com.miradesktop.ba4d.overlay
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.graphics.Color
@@ -19,6 +20,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
+import com.miradesktop.ba4d.MainActivity
 import com.miradesktop.ba4d.nativews.AndroidMimosaServer
 import com.miradesktop.ba4d.R
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
@@ -465,11 +467,21 @@ class OverlayService : Service() {
     }
 
     private fun buildNotification(): Notification {
+        val openMainIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            openMainIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentTitle(getString(R.string.overlay_notification_title))
             .setContentText(getString(R.string.overlay_notification_text))
             .setOngoing(true)
+            .setContentIntent(pendingIntent)
             .build()
     }
 

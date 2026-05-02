@@ -38,11 +38,11 @@
             android:visibility="gone" />
 
         <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="如何加速更新："
-            android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="关于此应用:"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"/>
 
         <Button
             android:id="@+id/openBilibiliButton"

@@ -49,6 +49,7 @@ data class BASparkConfig(
         private const val KEY_OPACITY_MUL = "opacity_mul"
         private const val KEY_PORT = "port"
         private const val KEY_ADAPTIVE_COLOR = "adaptive_color"
+        const val KEY_OVERLAY_VISIBLE = "overlay_visible"
 
         fun fromPreferences(prefs: SharedPreferences): BASparkConfig {
             return BASparkConfig(
