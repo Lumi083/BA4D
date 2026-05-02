@@ -27,6 +27,13 @@
             android:layout_marginTop="16dp"
             android:text="刷新状态" />
 
+        <Button
+            android:id="@+id/openCalibrationButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="打开坐标校准工具" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

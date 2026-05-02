@@ -321,8 +321,14 @@ class RootMimosaCollector(
 
         val rotated = applyDisplayRotation(normalized.first, normalized.second, screen.rotation)
 
-        val px = (rotated.first * realWidth).roundToInt().coerceIn(0, realWidth - 1)
-        val py = (rotated.second * realHeight).roundToInt().coerceIn(0, realHeight - 1)
+        // Load calibration scale factors
+        val prefs = context.getSharedPreferences("calibration_config", Context.MODE_PRIVATE)
+        val scaleX = prefs.getFloat("scale_x", 1.0f)
+        val scaleY = prefs.getFloat("scale_y", 1.0f)
+
+        // Apply calibration scale factors to correct coordinate mapping
+        val px = (rotated.first * realWidth * scaleX).roundToInt().coerceIn(0, realWidth - 1)
+        val py = (rotated.second * realHeight * scaleY).roundToInt().coerceIn(0, realHeight - 1)
 
         return Pair(px, py)
     }

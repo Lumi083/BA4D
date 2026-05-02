@@ -31,6 +31,10 @@ class DebugFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         binding.refreshDebugButton.setOnClickListener { refreshDebug() }
+        binding.openCalibrationButton.setOnClickListener {
+            val intent = android.content.Intent(requireContext(), CalibrationActivity::class.java)
+            startActivity(intent)
+        }
         refreshDebug()
     }
 

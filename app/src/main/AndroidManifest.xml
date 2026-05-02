@@ -33,6 +33,11 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".CalibrationActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="com.miradesktop.ba4d.shizuku"
