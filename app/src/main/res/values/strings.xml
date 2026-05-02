@@ -35,9 +35,9 @@
     <string name="port_hint">端口（与 websocket 服务一致）</string>
     <string name="baspark_config_note">提示：端口请保持默认值 42891。</string>
     <string name="reset_baspark_config">恢复默认设置</string>
-    <string name="start_overlay">启动悬浮窗</string>
-    <string name="restart_overlay">重启悬浮窗</string>
-    <string name="stop_overlay">停止悬浮窗</string>
+    <string name="start_overlay">启动</string>
+    <string name="restart_overlay">重启</string>
+    <string name="stop_overlay">停止</string>
     <string name="overlay_notification_channel_name">Overlay Runner</string>
     <string name="overlay_notification_title">PotDroid Overlay Running</string>
     <string name="overlay_notification_text">正在显示半透明 Web 悬浮窗</string>
