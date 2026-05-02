@@ -1,7 +1,11 @@
 package com.miradesktop.ba4d.overlay
 
 import android.accessibilityservice.AccessibilityService
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -67,6 +71,7 @@ class OverlayAccessibilityService : AccessibilityService() {
                     val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
                     android.util.Log.d("OverlayAccessibilityService", "adaptiveColor check: resultCode=$resultCode, data=$data")
                     if (data != null) {
+                        startForegroundForMediaProjection()
                         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
                         val metrics = resources.displayMetrics
                         screenSampler = ScreenSampler(this).apply {
@@ -99,6 +104,9 @@ class OverlayAccessibilityService : AccessibilityService() {
                 mimosaServer?.stopSafe()
                 mimosaServer = null
                 mimosaServerPort = -1
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                }
             }
         }
         return START_STICKY
@@ -115,12 +123,41 @@ class OverlayAccessibilityService : AccessibilityService() {
         mimosaServer = null
         mimosaServerPort = -1
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
+    }
+
+    private fun startForegroundForMediaProjection() {
+        val channelId = "baspark_media_projection"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "BA Spark 屏幕捕获",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+        }
+
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+                .setContentTitle("BA Spark")
+                .setContentText("自适应颜色正在运行")
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .build()
+        } else {
+            Notification.Builder(this)
+                .setContentTitle("BA Spark")
+                .setContentText("自适应颜色正在运行")
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .build()
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as? android.media.projection.MediaProjectionManager
-            mediaProjectionManager?.getMediaProjection(
-                android.app.Activity.RESULT_OK,
-                android.content.Intent()
-            )?.stop()
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        } else {
+            startForeground(1, notification)
         }
     }
 
