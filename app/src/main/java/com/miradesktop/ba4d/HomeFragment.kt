@@ -30,6 +30,7 @@ class HomeFragment : Fragment() {
     private var projectionData: Intent? = null
     private var pendingStartOverlay = false
     private var pendingUseAccessibility = false
+    private var overlay_visible = false
 
     private val screenCaptureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -96,7 +97,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun updateStartButtonState() {
-        val isAccessibilityRunning = isAccessibilityServiceEnabled()
+        val isAccessibilityRunning = isAccessibilityServiceEnabled() && overlay_visible
         val isOverlayRunning = isServiceRunning(OverlayService::class.java)
         val isRunning = isAccessibilityRunning || isOverlayRunning
 
@@ -170,6 +171,7 @@ class HomeFragment : Fragment() {
             requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
             projectionResultCode = -1
             projectionData = null
+            overlay_visible = false;
             updateStartButtonState()
         }
         binding.openAccessibilityPermissionButton.setOnClickListener {
@@ -303,6 +305,7 @@ class HomeFragment : Fragment() {
                 }
             }
             requireContext().startService(intent)
+            overlay_visible = true;
         } else {
             // Use regular overlay service
             val intent = Intent(requireContext(), OverlayService::class.java).apply {
