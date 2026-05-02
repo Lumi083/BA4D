@@ -19,7 +19,6 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.miradesktop.ba4d.R
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
 import com.miradesktop.ba4d.nativews.AndroidMimosaServer
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
@@ -123,36 +122,25 @@ class OverlayAccessibilityService : AccessibilityService() {
         mimosaServer = null
         mimosaServerPort = -1
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     private fun startForegroundForMediaProjection() {
         val channelId = "baspark_media_projection"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "BA Spark 屏幕捕获",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager?.createNotificationChannel(channel)
-        }
+        val channel = NotificationChannel(
+            channelId,
+            "BA Spark 屏幕捕获",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager?.createNotificationChannel(channel)
 
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val notification =
             Notification.Builder(this, channelId)
                 .setContentTitle("BA Spark")
-                .setContentText("自适应颜色正在运行")
+                .setContentText("正在以无障碍模式运行")
                 .setSmallIcon(android.R.drawable.ic_menu_view)
                 .build()
-        } else {
-            Notification.Builder(this)
-                .setContentTitle("BA Spark")
-                .setContentText("自适应颜色正在运行")
-                .setSmallIcon(android.R.drawable.ic_menu_view)
-                .build()
-        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)

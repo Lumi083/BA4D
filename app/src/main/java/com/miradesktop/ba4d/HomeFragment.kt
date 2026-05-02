@@ -94,7 +94,6 @@ class HomeFragment : Fragment() {
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val am = requireContext().getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val enabledServices = Settings.Secure.getString(
             requireContext().contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
@@ -179,7 +178,7 @@ class HomeFragment : Fragment() {
             requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
             projectionResultCode = -1
             projectionData = null
-            overlay_visible = false;
+            overlay_visible = false
             updateStartButtonState()
         }
         binding.openAccessibilityPermissionButton.setOnClickListener {
@@ -313,7 +312,7 @@ class HomeFragment : Fragment() {
                 }
             }
             requireContext().startService(intent)
-            overlay_visible = true;
+            overlay_visible = true
         } else {
             // Use regular overlay service
             val intent = Intent(requireContext(), OverlayService::class.java).apply {
@@ -335,5 +334,16 @@ class HomeFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        fun getStatus(context: Context): Boolean {
+            return isServiceRunning(context, OverlayService::class.java) || isServiceRunning(context, OverlayAccessibilityService::class.java)
+        }
+
+        private fun isServiceRunning(context: Context, serviceClass: Class<*>): Boolean {
+            val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            return manager.getRunningServices(Int.MAX_VALUE).any { it.service.className == serviceClass.name }
+        }
     }
 }
