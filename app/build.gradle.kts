@@ -35,7 +35,7 @@ android {
         create("release") {
             storeFile = file("${rootProject.projectDir}/jks/.jks")
             storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "BADDDD"
-            keyAlias = "key0"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "key0"
             keyPassword = System.getenv("KEY_PASSWORD") ?: "BADDDD"
         }
     }
