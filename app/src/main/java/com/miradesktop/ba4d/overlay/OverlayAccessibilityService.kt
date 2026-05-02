@@ -22,6 +22,7 @@ import android.webkit.WebViewClient
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
 import com.miradesktop.ba4d.nativews.AndroidMimosaServer
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
+import com.miradesktop.ba4d.root.RootMimosaCollector
 import org.json.JSONObject
 import kotlin.math.max
 
@@ -42,6 +43,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     private var mimosaServer: AndroidMimosaServer? = null
     private var mimosaServerPort: Int = -1
     private var shizukuCollector: ShizukuMimosaCollector? = null
+    private var rootCollector: RootMimosaCollector? = null
     private var miraAdapter: MiraAPIAdapter? = null
     private var screenSampler: ScreenSampler? = null
     private var config: BASparkConfig? = null
@@ -63,7 +65,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             ACTION_START_OVERLAY -> {
                 config = loadBasparkConfig()
                 ensureMimosaServer(config!!.port)
-                startShizukuCollectorIfPossible()
+                startInputCollectorIfPossible()
 
                 if (config!!.adaptiveColor) {
                     val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1)
@@ -98,6 +100,8 @@ class OverlayAccessibilityService : AccessibilityService() {
                 removeOverlay()
                 shizukuCollector?.stop()
                 shizukuCollector = null
+                rootCollector?.stop()
+                rootCollector = null
                 screenSampler?.stop()
                 screenSampler = null
                 mimosaServer?.stopSafe()
@@ -116,6 +120,8 @@ class OverlayAccessibilityService : AccessibilityService() {
         removeOverlay()
         shizukuCollector?.stop()
         shizukuCollector = null
+        rootCollector?.stop()
+        rootCollector = null
         screenSampler?.stop()
         screenSampler = null
         mimosaServer?.stopSafe()
@@ -322,10 +328,45 @@ class OverlayAccessibilityService : AccessibilityService() {
         miraAdapter?.sendMouseInput(x = x, y = y, pressed = pressed)
     }
 
-    private fun startShizukuCollectorIfPossible() {
+    private fun startInputCollectorIfPossible() {
+        // Priority: Root > Shizuku
+        if (RootMimosaCollector.isRootAvailable()) {
+            startRootCollector()
+        } else if (ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()) {
+            startShizukuCollector()
+        }
+    }
+
+    private fun startRootCollector() {
+        if (rootCollector != null) return
+
+        rootCollector = RootMimosaCollector(
+            context = this,
+            fpsLimit = config?.fpsLimit ?: 60,
+            onPointer = { pointerId, x, y, pressed ->
+                val btnMask = if (pressed) 1 else 0
+                mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
+                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
+                handleAdaptiveColor(x, y)
+            },
+            onBackgroundLog = { eventName, detail, x, y ->
+                val json = JSONObject()
+                    .put("type", "bg")
+                    .put("event", eventName)
+                    .put("package", "root-shell")
+                    .put("class", detail)
+                    .put("text", "")
+                    .put("x", x)
+                    .put("y", y)
+                    .put("ts", System.currentTimeMillis())
+                    .toString()
+                mimosaServer?.publishBackgroundEvent(json)
+            }
+        ).also { it.start() }
+    }
+
+    private fun startShizukuCollector() {
         if (shizukuCollector != null) return
-        if (!ShizukuMimosaCollector.isShizukuReady()) return
-        if (!ShizukuMimosaCollector.hasShizukuPermission()) return
 
         shizukuCollector = ShizukuMimosaCollector(
             context = this,
@@ -334,51 +375,7 @@ class OverlayAccessibilityService : AccessibilityService() {
                 val btnMask = if (pressed) 1 else 0
                 mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
                 miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
-                if (config?.adaptiveColor == true && screenSampler != null) {
-                    val samples = listOf(
-                        screenSampler?.sampleAt(x, y),
-                        screenSampler?.sampleAt(x - 50, y - 50),
-                        screenSampler?.sampleAt(x + 50, y - 50),
-                        screenSampler?.sampleAt(x - 50, y + 50),
-                        screenSampler?.sampleAt(x + 50, y + 50)
-                    ).filterNotNull()
-
-                    if (samples.isNotEmpty()) {
-                        val avgR = samples.map { it.first }.average().toFloat()
-                        val avgG = samples.map { it.second }.average().toFloat()
-                        val avgB = samples.map { it.third }.average().toFloat()
-
-                        currentR = currentR * 0.7f + avgR * 0.3f
-                        currentG = currentG * 0.7f + avgG * 0.3f
-                        currentB = currentB * 0.7f + avgB * 0.3f
-
-                        val baseColor = config?.color ?: "rgba(87, 164, 255, 1)"
-                        val initialTrailColor = config?.trailColor ?: "rgba(0, 200, 255, 1)"
-
-                        val trailColorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(initialTrailColor)
-                        val (r, g, b) = if (trailColorMatch != null) {
-                            Triple(trailColorMatch.groupValues[1].toInt(), trailColorMatch.groupValues[2].toInt(), trailColorMatch.groupValues[3].toInt())
-                        } else {
-                            Triple(0, 200, 255)
-                        }
-
-                        fun hardLight(blend: Float, base: Float): Float {
-                            return max(max(1f - 2f * (1f - base) * (1f - blend), base), blend) + base * 0.15f
-                        }
-
-                        val newR = (hardLight(currentR, r / 255f) * 255).toInt().coerceIn(0, 255)
-                        val newG = (hardLight(currentG, g / 255f) * 255).toInt().coerceIn(0, 255)
-                        val newB = (hardLight(currentB, b / 255f) * 255).toInt().coerceIn(0, 255)
-                        val trailColor = "rgba($newR, $newG, $newB, 1)"
-
-                        if (trailColor != targetColor) {
-                            targetColor = trailColor
-                            miraAdapter?.sendConfig(mapOf("color" to baseColor, "trailColor" to trailColor))
-                            getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
-                                .putString("current_adaptive_color", trailColor).apply()
-                        }
-                    }
-                }
+                handleAdaptiveColor(x, y)
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 val json = JSONObject()
@@ -394,6 +391,62 @@ class OverlayAccessibilityService : AccessibilityService() {
                 mimosaServer?.publishBackgroundEvent(json)
             }
         ).also { it.start() }
+    }
+
+    private fun handleAdaptiveColor(x: Int, y: Int) {
+        if (config?.adaptiveColor == true && screenSampler != null) {
+            val samples = listOf(
+                screenSampler?.sampleAt(x, y),
+                screenSampler?.sampleAt(x - 50, y - 50),
+                screenSampler?.sampleAt(x + 50, y - 50),
+                screenSampler?.sampleAt(x - 50, y + 50),
+                screenSampler?.sampleAt(x + 50, y + 50)
+            ).filterNotNull()
+
+            if (samples.isNotEmpty()) {
+                val avgR = samples.map { it.first }.average().toFloat()
+                val avgG = samples.map { it.second }.average().toFloat()
+                val avgB = samples.map { it.third }.average().toFloat()
+
+                currentR = currentR * 0.7f + avgR * 0.3f
+                currentG = currentG * 0.7f + avgG * 0.3f
+                currentB = currentB * 0.7f + avgB * 0.3f
+
+                val baseColor = config?.color ?: "rgba(87, 164, 255, 1)"
+                val initialTrailColor = config?.trailColor ?: "rgba(0, 200, 255, 1)"
+
+                val trailColorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(initialTrailColor)
+                val (r, g, b) = if (trailColorMatch != null) {
+                    Triple(trailColorMatch.groupValues[1].toInt(), trailColorMatch.groupValues[2].toInt(), trailColorMatch.groupValues[3].toInt())
+                } else {
+                    Triple(0, 200, 255)
+                }
+
+                fun hardLight(blend: Float, base: Float): Float {
+                    return max(max(1f - 2f * (1f - base) * (1f - blend), base), blend) + base * 0.15f
+                }
+
+                val newR = (hardLight(currentR, r / 255f) * 255).toInt().coerceIn(0, 255)
+                val newG = (hardLight(currentG, g / 255f) * 255).toInt().coerceIn(0, 255)
+                val newB = (hardLight(currentB, b / 255f) * 255).toInt().coerceIn(0, 255)
+                val trailColor = "rgba($newR, $newG, $newB, 1)"
+
+                if (trailColor != targetColor) {
+                    targetColor = trailColor
+                    miraAdapter?.sendConfig(mapOf("color" to baseColor, "trailColor" to trailColor))
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString("current_adaptive_color", trailColor).apply()
+                }
+            }
+        }
+    }
+
+    private fun startShizukuCollectorIfPossible() {
+        if (shizukuCollector != null) return
+        if (!ShizukuMimosaCollector.isShizukuReady()) return
+        if (!ShizukuMimosaCollector.hasShizukuPermission()) return
+
+        startShizukuCollector()
     }
 
     private fun removeOverlay() {
