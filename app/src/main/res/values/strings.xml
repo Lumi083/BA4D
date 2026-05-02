@@ -13,6 +13,7 @@
     <string name="open_overlay_permission">悬浮窗权限页</string>
     <string name="shizuku_permission_missing">Shizuku 权限：未授权（无法抓取后台输入事件）</string>
     <string name="shizuku_permission_granted">Shizuku 权限：已授权</string>
+    <string name="root_permission_granted">Root 权限：已授权（优先使用）</string>
     <string name="open_shizuku_permission">申请 Shizuku 权限</string>
     <string name="shizuku_permission_optional_tip">授予 Shizuku 权限，以 shell 权限后台抓取输入事件</string>
     <string name="download_shizuku">请先下载 Shizuku</string>

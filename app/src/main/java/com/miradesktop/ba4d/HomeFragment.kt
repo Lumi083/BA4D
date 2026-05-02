@@ -20,6 +20,7 @@ import com.miradesktop.ba4d.overlay.BASparkConfig
 import com.miradesktop.ba4d.overlay.OverlayAccessibilityService
 import com.miradesktop.ba4d.overlay.OverlayService
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
+import com.miradesktop.ba4d.root.RootMimosaCollector
 import rikka.shizuku.Shizuku
 import java.io.File
 
@@ -72,15 +73,22 @@ class HomeFragment : Fragment() {
             if (Settings.canDrawOverlays(requireContext())) R.string.overlay_permission_granted else R.string.overlay_permission_missing
         )
 
-        // Check Shizuku permission status
+        // Check Shizuku/Root permission status
+        val hasRoot = RootMimosaCollector.isRootAvailable()
         val hasShizuku = ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()
+        val hasPrivilegedAccess = hasRoot || hasShizuku
+
         binding.shizukuPermissionStatus.text = getString(
-            if (hasShizuku) R.string.shizuku_permission_granted else R.string.shizuku_permission_missing
+            when {
+                hasRoot -> R.string.root_permission_granted
+                hasShizuku -> R.string.shizuku_permission_granted
+                else -> R.string.shizuku_permission_missing
+            }
         )
 
-        // Hide Shizuku buttons if already granted
-        binding.openShizukuPermissionButton.visibility = if (hasShizuku) View.GONE else View.VISIBLE
-        binding.downloadShizukuButton.visibility = if (hasShizuku) View.GONE else View.VISIBLE
+        // Hide Shizuku buttons if root or Shizuku is available
+        binding.openShizukuPermissionButton.visibility = if (hasPrivilegedAccess) View.GONE else View.VISIBLE
+        binding.downloadShizukuButton.visibility = if (hasPrivilegedAccess) View.GONE else View.VISIBLE
 
         updateStartButtonState()
     }
