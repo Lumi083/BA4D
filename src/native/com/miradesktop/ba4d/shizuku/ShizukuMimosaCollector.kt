@@ -300,8 +300,6 @@ class ShizukuMimosaCollector(
     }
 
     private fun mapToDisplay(rawX: Int, rawY: Int, axisRange: AxisRange?, screen: ScreenGeometry): Pair<Int, Int> {
-        val width = screen.widthPx.coerceAtLeast(1)
-        val height = screen.heightPx.coerceAtLeast(1)
         val realWidth = screen.realWidthPx.coerceAtLeast(1)
         val realHeight = screen.realHeightPx.coerceAtLeast(1)
 
@@ -319,13 +317,11 @@ class ShizukuMimosaCollector(
 
         val rotated = applyDisplayRotation(normalized.first, normalized.second, screen.rotation)
 
-        // Convert the physical screen percentage to pixel coordinates in the true physical display
-        val physX = rotated.first * realWidth
-        val physY = rotated.second * realHeight
+        // Convert to pixel coordinates in the true physical display
+        // No inset compensation needed - overlay covers full screen with FLAG_LAYOUT_NO_LIMITS
+        val px = (rotated.first * realWidth).roundToInt().coerceIn(0, realWidth - 1)
+        val py = (rotated.second * realHeight).roundToInt().coerceIn(0, realHeight - 1)
 
-        // Apply translations for system insets (e.g., status bar) to map physical pixels to app overlay coordinates
-        val px = (physX - screen.leftInset).roundToInt().coerceIn(0, width - 1)
-        val py = (physY - screen.topInset).roundToInt().coerceIn(0, height - 1)
         return Pair(px, py)
     }
 
@@ -343,31 +339,19 @@ class ShizukuMimosaCollector(
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val display = windowManager.defaultDisplay
         val realMetrics = DisplayMetrics()
-        val appMetrics = DisplayMetrics()
         display.getRealMetrics(realMetrics)
-        display.getMetrics(appMetrics)
 
         val rotation = display.rotation
 
-        val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-        val physicalTopInset = if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
-
-        val (leftInset, topInset) = when (rotation) {
-            Surface.ROTATION_0 -> Pair(0, if (realMetrics.heightPixels == appMetrics.heightPixels) 0 else physicalTopInset)
-            Surface.ROTATION_90 -> Pair(physicalTopInset, 0)
-            Surface.ROTATION_180 -> Pair(0, 0)
-            Surface.ROTATION_270 -> Pair(0, if (realMetrics.heightPixels > appMetrics.heightPixels) realMetrics.heightPixels - appMetrics.heightPixels else 0)
-            else -> Pair(0, 0)
-        }
-
+        // No insets - overlay covers full screen with FLAG_LAYOUT_NO_LIMITS
         return ScreenGeometry(
-            widthPx = appMetrics.widthPixels.coerceAtLeast(1),
-            heightPx = appMetrics.heightPixels.coerceAtLeast(1),
+            widthPx = realMetrics.widthPixels.coerceAtLeast(1),
+            heightPx = realMetrics.heightPixels.coerceAtLeast(1),
             realWidthPx = realMetrics.widthPixels.coerceAtLeast(1),
             realHeightPx = realMetrics.heightPixels.coerceAtLeast(1),
             rotation = rotation,
-            leftInset = leftInset,
-            topInset = topInset
+            leftInset = 0,
+            topInset = 0
         )
     }
 

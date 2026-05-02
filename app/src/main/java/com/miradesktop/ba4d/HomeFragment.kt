@@ -11,11 +11,13 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import com.miradesktop.ba4d.databinding.FragmentHomeBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
+import com.miradesktop.ba4d.overlay.OverlayAccessibilityService
 import com.miradesktop.ba4d.overlay.OverlayService
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import rikka.shizuku.Shizuku
@@ -26,6 +28,8 @@ class HomeFragment : Fragment() {
     private val binding get() = _binding!!
     private var projectionResultCode: Int = -1
     private var projectionData: Intent? = null
+    private var pendingStartOverlay = false
+    private var pendingUseAccessibility = false
 
     private val screenCaptureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -34,7 +38,7 @@ class HomeFragment : Fragment() {
             Toast.makeText(requireContext(), "屏幕捕获权限已授权", Toast.LENGTH_SHORT).show()
             if (pendingStartOverlay) {
                 pendingStartOverlay = false
-                startOverlay()
+                startOverlay(pendingUseAccessibility)
                 updateStartButtonState()
             }
         } else if (pendingStartOverlay) {
@@ -42,8 +46,6 @@ class HomeFragment : Fragment() {
             Toast.makeText(requireContext(), "需要屏幕捕获权限才能使用自适应颜色", Toast.LENGTH_LONG).show()
         }
     }
-
-    private var pendingStartOverlay = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
@@ -58,18 +60,46 @@ class HomeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+
+        // Check accessibility service status
+        binding.accessibilityPermissionStatus.text = getString(
+            if (isAccessibilityServiceEnabled()) R.string.accessibility_permission_granted else R.string.accessibility_permission_missing
+        )
+
+        // Check overlay permission status
         binding.overlayPermissionStatus.text = getString(
             if (Settings.canDrawOverlays(requireContext())) R.string.overlay_permission_granted else R.string.overlay_permission_missing
         )
+
+        // Check Shizuku permission status
+        val hasShizuku = ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()
         binding.shizukuPermissionStatus.text = getString(
-            if (ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission())
-                R.string.shizuku_permission_granted else R.string.shizuku_permission_missing
+            if (hasShizuku) R.string.shizuku_permission_granted else R.string.shizuku_permission_missing
         )
+
+        // Hide Shizuku buttons if already granted
+        binding.openShizukuPermissionButton.visibility = if (hasShizuku) View.GONE else View.VISIBLE
+        binding.downloadShizukuButton.visibility = if (hasShizuku) View.GONE else View.VISIBLE
+
         updateStartButtonState()
     }
 
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val am = requireContext().getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val enabledServices = Settings.Secure.getString(
+            requireContext().contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        )
+        val colonSplitter = enabledServices?.split(":")?.map { it.trim() } ?: emptyList()
+        val targetService = "${requireContext().packageName}/${OverlayAccessibilityService::class.java.name}"
+        return colonSplitter.contains(targetService)
+    }
+
     private fun updateStartButtonState() {
-        val isRunning = isServiceRunning(OverlayService::class.java)
+        val isAccessibilityRunning = isAccessibilityServiceEnabled()
+        val isOverlayRunning = isServiceRunning(OverlayService::class.java)
+        val isRunning = isAccessibilityRunning || isOverlayRunning
+
         binding.startOverlayButton.text = getString(if (isRunning) R.string.restart_overlay else R.string.start_overlay)
         binding.stopOverlayButton.visibility = if (isRunning) View.VISIBLE else View.GONE
     }
@@ -97,33 +127,53 @@ class HomeFragment : Fragment() {
 
     private fun setupListeners() {
         binding.startOverlayButton.setOnClickListener {
-            if (!Settings.canDrawOverlays(requireContext())) {
-                Toast.makeText(requireContext(), R.string.overlay_permission_required, Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
             val config = readConfig()
             BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), config)
 
-            val isRunning = isServiceRunning(OverlayService::class.java)
-            if (isRunning) {
+            // Prefer accessibility service if enabled
+            val useAccessibility = isAccessibilityServiceEnabled()
+            val useOverlay = !useAccessibility && Settings.canDrawOverlays(requireContext())
+
+            if (!useAccessibility && !useOverlay) {
+                Toast.makeText(requireContext(), "需要无障碍服务或悬浮窗权限", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
+            // Stop any running service first
+            if (useAccessibility) {
+                val stopIntent = Intent(requireContext(), OverlayAccessibilityService::class.java).apply {
+                    action = OverlayAccessibilityService.ACTION_STOP_OVERLAY
+                }
+                requireContext().startService(stopIntent)
+            }
+            if (isServiceRunning(OverlayService::class.java)) {
                 requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
             }
 
             // Request screen capture permission if adaptive color is enabled and we don't have it yet
             if (config.adaptiveColor && projectionData == null) {
                 pendingStartOverlay = true
+                pendingUseAccessibility = useAccessibility
                 val manager = requireContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
             } else {
-                startOverlay()
+                startOverlay(useAccessibility)
                 updateStartButtonState()
             }
         }
         binding.stopOverlayButton.setOnClickListener {
+            // Stop both services
+            val stopIntent = Intent(requireContext(), OverlayAccessibilityService::class.java).apply {
+                action = OverlayAccessibilityService.ACTION_STOP_OVERLAY
+            }
+            requireContext().startService(stopIntent)
             requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
             projectionResultCode = -1
             projectionData = null
             updateStartButtonState()
+        }
+        binding.openAccessibilityPermissionButton.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         binding.openOverlayPermissionButton.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -226,7 +276,7 @@ class HomeFragment : Fragment() {
         )
     }
 
-    private fun startOverlay() {
+    private fun startOverlay(useAccessibility: Boolean = false) {
         val startupFile = requireContext().getSharedPreferences("app_prefs", 0).getString("startup_file", null)
         val url = if (startupFile != null) {
             // Check if it's a user-created file in filesDir
@@ -240,18 +290,34 @@ class HomeFragment : Fragment() {
         } else {
             "file:///android_asset/ba-spark-lite.mira.html"
         }
-        val intent = Intent(requireContext(), OverlayService::class.java).apply {
-            putExtra(OverlayService.EXTRA_URL, url)
-            putExtra(OverlayService.EXTRA_BLOCK_REGIONS, "")
-            if (projectionData != null) {
-                putExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, projectionResultCode)
-                putExtra(OverlayService.EXTRA_PROJECTION_DATA, projectionData)
+
+        if (useAccessibility) {
+            // Use accessibility service
+            val intent = Intent(requireContext(), OverlayAccessibilityService::class.java).apply {
+                action = OverlayAccessibilityService.ACTION_START_OVERLAY
+                putExtra(OverlayAccessibilityService.EXTRA_URL, url)
+                putExtra(OverlayAccessibilityService.EXTRA_BLOCK_REGIONS, "")
+                if (projectionData != null) {
+                    putExtra(OverlayAccessibilityService.EXTRA_PROJECTION_RESULT_CODE, projectionResultCode)
+                    putExtra(OverlayAccessibilityService.EXTRA_PROJECTION_DATA, projectionData)
+                }
             }
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            requireContext().startForegroundService(intent)
-        } else {
             requireContext().startService(intent)
+        } else {
+            // Use regular overlay service
+            val intent = Intent(requireContext(), OverlayService::class.java).apply {
+                putExtra(OverlayService.EXTRA_URL, url)
+                putExtra(OverlayService.EXTRA_BLOCK_REGIONS, "")
+                if (projectionData != null) {
+                    putExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, projectionResultCode)
+                    putExtra(OverlayService.EXTRA_PROJECTION_DATA, projectionData)
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                requireContext().startForegroundService(intent)
+            } else {
+                requireContext().startService(intent)
+            }
         }
     }
 

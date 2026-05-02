@@ -1,42 +1,36 @@
 package com.miradesktop.ba4d.overlay
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
+import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
-import android.os.IBinder
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.core.app.NotificationCompat
-import com.miradesktop.ba4d.nativews.AndroidMimosaServer
 import com.miradesktop.ba4d.R
-import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
+import com.miradesktop.ba4d.nativews.AndroidMimosaServer
+import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import org.json.JSONObject
 import kotlin.math.max
 
-class OverlayService : Service() {
+class OverlayAccessibilityService : AccessibilityService() {
 
     companion object {
+        const val ACTION_START_OVERLAY = "com.miradesktop.ba4d.START_OVERLAY"
+        const val ACTION_STOP_OVERLAY = "com.miradesktop.ba4d.STOP_OVERLAY"
         const val EXTRA_URL = "extra_url"
         const val EXTRA_BLOCK_REGIONS = "extra_block_regions"
         const val EXTRA_PROJECTION_RESULT_CODE = "extra_projection_result_code"
         const val EXTRA_PROJECTION_DATA = "extra_projection_data"
-        const val MIMOSA_TOUCH_WS_PORT = 48291
-
-        private const val NOTIFICATION_CHANNEL_ID = "overlay_runner"
-        private const val NOTIFICATION_ID = 7
     }
 
     private var windowManager: WindowManager? = null
@@ -53,41 +47,60 @@ class OverlayService : Service() {
     private var currentB = 0f
     private var targetColor = ""
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // No need to handle accessibility events for overlay rendering
+    }
+
+    override fun onInterrupt() {
+        // Handle interruption if needed
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ensureNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        when (intent?.action) {
+            ACTION_START_OVERLAY -> {
+                config = loadBasparkConfig()
+                ensureMimosaServer(config!!.port)
+                startShizukuCollectorIfPossible()
 
-        config = loadBasparkConfig()
-        ensureMimosaServer(config!!.port)
-        startShizukuCollectorIfPossible()
-
-        if (config!!.adaptiveColor) {
-            val resultCode = intent?.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1) ?: -1
-            val data = intent?.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
-            android.util.Log.d("OverlayService", "adaptiveColor check: resultCode=$resultCode, data=$data, resultCode!=-1=${resultCode != -1}, data!=null=${data != null}")
-            if (data != null) {
-                val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-                val metrics = resources.displayMetrics
-                screenSampler = ScreenSampler(this).apply {
-                    start(resultCode, data, metrics.widthPixels, metrics.heightPixels)
+                if (config!!.adaptiveColor) {
+                    val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1)
+                    val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
+                    android.util.Log.d("OverlayAccessibilityService", "adaptiveColor check: resultCode=$resultCode, data=$data")
+                    if (data != null) {
+                        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                        val metrics = resources.displayMetrics
+                        screenSampler = ScreenSampler(this).apply {
+                            start(resultCode, data, metrics.widthPixels, metrics.heightPixels)
+                        }
+                        getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                            .putString("current_adaptive_color", "等待触摸检测").apply()
+                    } else {
+                        getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                            .putString("current_adaptive_color", "未授权屏幕捕获").apply()
+                    }
+                } else {
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString("current_adaptive_color", "已禁用").apply()
                 }
-                getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "等待触摸检测").apply()
-            } else {
-                getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "未授权屏幕捕获").apply()
+
+                removeOverlay()
+                createOverlay(
+                    inputUrl = intent.getStringExtra(EXTRA_URL),
+                    blockRegionsSpec = intent.getStringExtra(EXTRA_BLOCK_REGIONS),
+                    config = config!!
+                )
             }
-        } else {
-            getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "已禁用").apply()
+            ACTION_STOP_OVERLAY -> {
+                removeOverlay()
+                shizukuCollector?.stop()
+                shizukuCollector = null
+                screenSampler?.stop()
+                screenSampler = null
+                mimosaServer?.stopSafe()
+                mimosaServer = null
+                mimosaServerPort = -1
+            }
         }
-
-        removeOverlay()
-        createOverlay(
-            inputUrl = intent?.getStringExtra(EXTRA_URL),
-            blockRegionsSpec = intent?.getStringExtra(EXTRA_BLOCK_REGIONS),
-            config = config!!
-        )
-
         return START_STICKY
     }
 
@@ -112,11 +125,7 @@ class OverlayService : Service() {
     }
 
     private fun createOverlay(inputUrl: String?, blockRegionsSpec: String?, config: BASparkConfig) {
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        val type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -159,9 +168,8 @@ class OverlayService : Service() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    android.util.Log.d("OverlayService", "Page loaded: $url")
+                    android.util.Log.d("OverlayAccessibilityService", "Page loaded: $url")
 
-                    // Set element ID for MiraAPI
                     evaluateJavascript("window.__MIRAAPI_ELEMENT_ID__ = 'baspark-overlay';", null)
 
                     miraAdapter = MiraAPIAdapter(this@apply, "baspark-overlay")
@@ -185,10 +193,6 @@ class OverlayService : Service() {
 
     private fun ensureMimosaServer(port: Int) {
         // Disabled: using MiraAPI instead of WebSocket
-        // if (mimosaServer != null && mimosaServerPort == port) return
-        // mimosaServer?.stopSafe()
-        // mimosaServer = AndroidMimosaServer(port).also { it.startSafe() }
-        // mimosaServerPort = port
     }
 
     private fun loadBasparkConfig(): BASparkConfig {
@@ -217,7 +221,6 @@ class OverlayService : Service() {
         val wm = windowManager ?: return
         regions.forEach { region ->
             val blockView = View(this).apply {
-                // Keep a light tint so experimenters can verify non-through rectangles visually.
                 setBackgroundColor(Color.argb(28, 255, 96, 96))
                 setOnTouchListener { _, event ->
                     onBlockRegionTouch(event)
@@ -285,7 +288,8 @@ class OverlayService : Service() {
                 if (newColor != targetColor) {
                     targetColor = newColor
                     miraAdapter?.sendConfig(mapOf("color" to newColor))
-                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", newColor).apply()
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString("current_adaptive_color", newColor).apply()
                 }
             }
         }
@@ -345,7 +349,8 @@ class OverlayService : Service() {
                         if (trailColor != targetColor) {
                             targetColor = trailColor
                             miraAdapter?.sendConfig(mapOf("color" to baseColor, "trailColor" to trailColor))
-                            getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", trailColor).apply()
+                            getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                                .putString("current_adaptive_color", trailColor).apply()
                         }
                     }
                 }
@@ -405,27 +410,6 @@ class OverlayService : Service() {
             dp.toFloat(),
             resources.displayMetrics
         ).toInt()
-    }
-
-    private fun ensureNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            getString(R.string.overlay_notification_channel_name),
-            NotificationManager.IMPORTANCE_LOW
-        )
-        manager.createNotificationChannel(channel)
-    }
-
-    private fun buildNotification(): Notification {
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentTitle(getString(R.string.overlay_notification_title))
-            .setContentText(getString(R.string.overlay_notification_text))
-            .setOngoing(true)
-            .build()
     }
 
     data class BlockRegionDp(
