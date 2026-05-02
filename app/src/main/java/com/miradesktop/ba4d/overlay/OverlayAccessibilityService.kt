@@ -33,14 +33,12 @@ class OverlayAccessibilityService : AccessibilityService() {
         const val ACTION_START_OVERLAY = "com.miradesktop.ba4d.START_OVERLAY"
         const val ACTION_STOP_OVERLAY = "com.miradesktop.ba4d.STOP_OVERLAY"
         const val EXTRA_URL = "extra_url"
-        const val EXTRA_BLOCK_REGIONS = "extra_block_regions"
         const val EXTRA_PROJECTION_RESULT_CODE = "extra_projection_result_code"
         const val EXTRA_PROJECTION_DATA = "extra_projection_data"
     }
 
     private var windowManager: WindowManager? = null
     private var webView: WebView? = null
-    private val blockViews = mutableListOf<View>()
     private var mimosaServer: AndroidMimosaServer? = null
     private var mimosaServerPort: Int = -1
     private var shizukuCollector: ShizukuMimosaCollector? = null
@@ -93,7 +91,6 @@ class OverlayAccessibilityService : AccessibilityService() {
                 removeOverlay()
                 createOverlay(
                     inputUrl = intent.getStringExtra(EXTRA_URL),
-                    blockRegionsSpec = intent.getStringExtra(EXTRA_BLOCK_REGIONS),
                     config = config!!
                 )
             }
@@ -167,7 +164,7 @@ class OverlayAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun createOverlay(inputUrl: String?, blockRegionsSpec: String?, config: BASparkConfig) {
+    private fun createOverlay(inputUrl: String?, config: BASparkConfig) {
         val type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
 
         val params = WindowManager.LayoutParams(
@@ -230,8 +227,6 @@ class OverlayAccessibilityService : AccessibilityService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         windowManager?.addView(overlayWebView, params)
         webView = overlayWebView
-
-        addBlockingRegions(type, parseBlockRegions(blockRegionsSpec))
     }
 
     private fun ensureMimosaServer(port: Int) {
@@ -258,87 +253,6 @@ class OverlayAccessibilityService : AccessibilityService() {
             "port" to config.port
         )
         miraAdapter?.sendConfig(configMap)
-    }
-
-    private fun addBlockingRegions(type: Int, regions: List<BlockRegionDp>) {
-        val wm = windowManager ?: return
-        regions.forEach { region ->
-            val blockView = View(this).apply {
-                setBackgroundColor(Color.argb(28, 255, 96, 96))
-                setOnTouchListener { _, event ->
-                    onBlockRegionTouch(event)
-                    true
-                }
-            }
-
-            val params = WindowManager.LayoutParams(
-                dpToPx(region.widthDp),
-                dpToPx(region.heightDp),
-                type,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = dpToPx(region.xDp)
-                y = dpToPx(region.yDp)
-            }
-
-            wm.addView(blockView, params)
-            blockViews.add(blockView)
-        }
-    }
-
-    private fun onBlockRegionTouch(event: MotionEvent?) {
-        if (event == null) return
-
-        val x = event.rawX.toInt()
-        val y = event.rawY.toInt()
-        val action = event.actionMasked
-        val pressed = action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL
-
-        if (config?.adaptiveColor == true && screenSampler != null) {
-            val samples = listOf(
-                screenSampler?.sampleAt(x, y),
-                screenSampler?.sampleAt(x - 50, y - 50),
-                screenSampler?.sampleAt(x + 50, y - 50),
-                screenSampler?.sampleAt(x - 50, y + 50),
-                screenSampler?.sampleAt(x + 50, y + 50)
-            ).filterNotNull()
-
-            if (samples.isNotEmpty()) {
-                val avgR = samples.map { it.first }.average().toFloat()
-                val avgG = samples.map { it.second }.average().toFloat()
-                val avgB = samples.map { it.third }.average().toFloat()
-
-                currentR = currentR * 0.7f + avgR * 0.3f
-                currentG = currentG * 0.7f + avgG * 0.3f
-                currentB = currentB * 0.7f + avgB * 0.3f
-
-                val baseColor = config?.color ?: "rgba(87, 164, 255, 1)"
-                val colorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(baseColor)
-                val (r, g, b) = if (colorMatch != null) {
-                    Triple(colorMatch.groupValues[1].toInt(), colorMatch.groupValues[2].toInt(), colorMatch.groupValues[3].toInt())
-                } else {
-                    Triple(87, 164, 255)
-                }
-
-                val newR = (r + currentR * 255).toInt().coerceIn(0, 255)
-                val newG = (g + currentG * 255).toInt().coerceIn(0, 255)
-                val newB = (b + currentB * 255).toInt().coerceIn(0, 255)
-                val newColor = "rgba($newR, $newG, $newB, 1)"
-
-                if (newColor != targetColor) {
-                    targetColor = newColor
-                    miraAdapter?.sendConfig(mapOf("color" to newColor))
-                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
-                        .putString("current_adaptive_color", newColor).apply()
-                }
-            }
-        }
-
-        miraAdapter?.sendMouseInput(x = x, y = y, pressed = pressed)
     }
 
     private fun startInputCollectorIfPossible() {
@@ -464,10 +378,6 @@ class OverlayAccessibilityService : AccessibilityService() {
 
     private fun removeOverlay() {
         val wm = windowManager
-        blockViews.forEach { blocker ->
-            runCatching { wm?.removeView(blocker) }
-        }
-        blockViews.clear()
 
         webView?.let { current ->
             runCatching { wm?.removeView(current) }
@@ -476,37 +386,4 @@ class OverlayAccessibilityService : AccessibilityService() {
         webView = null
         windowManager = null
     }
-
-    private fun parseBlockRegions(raw: String?): List<BlockRegionDp> {
-        if (raw.isNullOrBlank()) return emptyList()
-
-        return raw.split(";")
-            .mapNotNull { entry ->
-                val parts = entry.trim().split(",")
-                if (parts.size != 4) return@mapNotNull null
-
-                val x = parts[0].trim().toIntOrNull() ?: return@mapNotNull null
-                val y = parts[1].trim().toIntOrNull() ?: return@mapNotNull null
-                val w = parts[2].trim().toIntOrNull() ?: return@mapNotNull null
-                val h = parts[3].trim().toIntOrNull() ?: return@mapNotNull null
-                if (w <= 0 || h <= 0) return@mapNotNull null
-
-                BlockRegionDp(xDp = x, yDp = y, widthDp = w, heightDp = h)
-            }
-    }
-
-    private fun dpToPx(dp: Int): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            dp.toFloat(),
-            resources.displayMetrics
-        ).toInt()
-    }
-
-    data class BlockRegionDp(
-        val xDp: Int,
-        val yDp: Int,
-        val widthDp: Int,
-        val heightDp: Int
-    )
 }

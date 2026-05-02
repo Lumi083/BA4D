@@ -195,7 +195,6 @@ class ContentFragment : Fragment() {
 
         val intent = Intent(requireContext(), OverlayService::class.java).apply {
             putExtra(OverlayService.EXTRA_URL, url)
-            putExtra(OverlayService.EXTRA_BLOCK_REGIONS, "")
             if (projectionData != null) {
                 putExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, projectionResultCode)
                 putExtra(OverlayService.EXTRA_PROJECTION_DATA, projectionData)

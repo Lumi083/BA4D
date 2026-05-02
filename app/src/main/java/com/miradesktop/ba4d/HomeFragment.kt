@@ -306,7 +306,6 @@ class HomeFragment : Fragment() {
             val intent = Intent(requireContext(), OverlayAccessibilityService::class.java).apply {
                 action = OverlayAccessibilityService.ACTION_START_OVERLAY
                 putExtra(OverlayAccessibilityService.EXTRA_URL, url)
-                putExtra(OverlayAccessibilityService.EXTRA_BLOCK_REGIONS, "")
                 if (projectionData != null) {
                     putExtra(OverlayAccessibilityService.EXTRA_PROJECTION_RESULT_CODE, projectionResultCode)
                     putExtra(OverlayAccessibilityService.EXTRA_PROJECTION_DATA, projectionData)
@@ -318,7 +317,6 @@ class HomeFragment : Fragment() {
             // Use regular overlay service
             val intent = Intent(requireContext(), OverlayService::class.java).apply {
                 putExtra(OverlayService.EXTRA_URL, url)
-                putExtra(OverlayService.EXTRA_BLOCK_REGIONS, "")
                 if (projectionData != null) {
                     putExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, projectionResultCode)
                     putExtra(OverlayService.EXTRA_PROJECTION_DATA, projectionData)
