@@ -41,6 +41,7 @@
     <string name="stop_overlay">停止</string>
     <string name="overlay_notification_channel_name">Overlay Runner</string>
     <string name="overlay_notification_title">PotDroid Overlay Running</string>
-    <string name="overlay_notification_text">正在显示半透明 Web 悬浮窗</string>
+    <string name="overlay_notification_text">正在以悬浮窗模式运行</string>
+    <string name="accessibility_overlay_notification_text">正在以无障碍模式运行</string>
     <string name="accessibility_service_description">用于显示全屏触摸效果悬浮窗，无需额外悬浮窗权限。本服务不会读取或记录任何用户数据。</string>
 </resources>
