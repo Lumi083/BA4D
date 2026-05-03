@@ -5,7 +5,10 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -25,6 +28,7 @@ import com.miradesktop.ba4d.R
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import com.miradesktop.ba4d.root.RootMimosaCollector
+import com.miradesktop.ba4d.direct.DirectMimosaCollector
 import kotlin.math.max
 
 class OverlayAccessibilityService : AccessibilityService() {
@@ -41,6 +45,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     private var webView: WebView? = null
     private var shizukuCollector: ShizukuMimosaCollector? = null
     private var rootCollector: RootMimosaCollector? = null
+    private var directCollector: DirectMimosaCollector? = null
     private var miraAdapter: MiraAPIAdapter? = null
     private var screenSampler: ScreenSampler? = null
     private var config: BASparkConfig? = null
@@ -48,6 +53,31 @@ class OverlayAccessibilityService : AccessibilityService() {
     private var currentG = 0f
     private var currentB = 0f
     private var targetColor = ""
+    private var isDirectCapture = false
+    private var isBA4DInForeground = false
+
+    private val appStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                "com.miradesktop.ba4d.APP_FOREGROUND" -> {
+                    android.util.Log.d("OverlayAccessibilityService", "Received APP_FOREGROUND, isDirectCapture=$isDirectCapture")
+                    isBA4DInForeground = true
+                    if (isDirectCapture) {
+                        android.util.Log.d("OverlayAccessibilityService", "Setting direct collector non-touchable (pass-through)")
+                        directCollector?.setTouchable(false)
+                    }
+                }
+                "com.miradesktop.ba4d.APP_BACKGROUND" -> {
+                    android.util.Log.d("OverlayAccessibilityService", "Received APP_BACKGROUND, isDirectCapture=$isDirectCapture")
+                    isBA4DInForeground = false
+                    if (isDirectCapture) {
+                        android.util.Log.d("OverlayAccessibilityService", "Setting direct collector touchable (capture input)")
+                        directCollector?.setTouchable(true)
+                    }
+                }
+            }
+        }
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // No need to handle accessibility events for overlay rendering
@@ -61,6 +91,21 @@ class OverlayAccessibilityService : AccessibilityService() {
         when (intent?.action) {
             ACTION_START_OVERLAY -> {
                 config = loadBasparkConfig()
+
+                // Check if using direct capture mode
+                val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+                val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+                isDirectCapture = (source == "direct")
+
+                // Register broadcast receiver for app state changes
+                if (isDirectCapture) {
+                    val filter = IntentFilter().apply {
+                        addAction("com.miradesktop.ba4d.APP_FOREGROUND")
+                        addAction("com.miradesktop.ba4d.APP_BACKGROUND")
+                    }
+                    registerReceiver(appStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                }
+
                 startInputCollectorIfPossible()
 
                 if (config!!.adaptiveColor) {
@@ -92,11 +137,16 @@ class OverlayAccessibilityService : AccessibilityService() {
                 )
             }
             ACTION_STOP_OVERLAY -> {
+                if (isDirectCapture) {
+                    runCatching { unregisterReceiver(appStateReceiver) }
+                }
                 removeOverlay()
                 shizukuCollector?.stop()
                 shizukuCollector = null
                 rootCollector?.stop()
                 rootCollector = null
+                directCollector?.stop()
+                directCollector = null
                 screenSampler?.stop()
                 screenSampler = null
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -109,11 +159,16 @@ class OverlayAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (isDirectCapture) {
+            runCatching { unregisterReceiver(appStateReceiver) }
+        }
         removeOverlay()
         shizukuCollector?.stop()
         shizukuCollector = null
         rootCollector?.stop()
         rootCollector = null
+        directCollector?.stop()
+        directCollector = null
         screenSampler?.stop()
         screenSampler = null
 
@@ -168,7 +223,7 @@ class OverlayAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                (if (isDirectCapture) 0 else WindowManager.LayoutParams.FLAG_FULLSCREEN) or
                 WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or
                 WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION,
             PixelFormat.TRANSLUCENT
@@ -220,6 +275,46 @@ class OverlayAccessibilityService : AccessibilityService() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         windowManager?.addView(overlayWebView, params)
         webView = overlayWebView
+
+        // Set initial touchable state for direct capture overlay
+        if (isDirectCapture && isBA4DInForeground) {
+            directCollector?.setTouchable(false)
+        }
+    }
+
+    private fun setOverlayTouchable(touchable: Boolean) {
+        val view = webView ?: run {
+            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: webView is null")
+            return
+        }
+        val wm = windowManager ?: run {
+            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: windowManager is null")
+            return
+        }
+
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: run {
+            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: layoutParams is not WindowManager.LayoutParams")
+            return
+        }
+
+        android.util.Log.d("OverlayAccessibilityService", "setOverlayTouchable($touchable) - current flags: ${params.flags}")
+
+        if (touchable) {
+            // Remove FLAG_NOT_TOUCHABLE to allow direct capture to intercept touches
+            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            // Add FLAG_NOT_TOUCHABLE to let touches pass through
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+
+        android.util.Log.d("OverlayAccessibilityService", "setOverlayTouchable($touchable) - new flags: ${params.flags}")
+
+        try {
+            wm.updateViewLayout(view, params)
+            android.util.Log.d("OverlayAccessibilityService", "updateViewLayout succeeded")
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayAccessibilityService", "updateViewLayout failed", e)
+        }
     }
 
     private fun loadBasparkConfig(): BASparkConfig {
@@ -270,7 +365,8 @@ class OverlayAccessibilityService : AccessibilityService() {
                 }
             }
             "direct" -> {
-                android.util.Log.w("OverlayAccessibilityService", "Direct capture not yet implemented")
+                android.util.Log.i("OverlayAccessibilityService", "Starting Direct collector")
+                startDirectCollector()
             }
             else -> {
                 android.util.Log.d("OverlayAccessibilityService", "Unknown source, using auto-detection")
@@ -308,6 +404,22 @@ class OverlayAccessibilityService : AccessibilityService() {
         if (shizukuCollector != null) return
 
         shizukuCollector = ShizukuMimosaCollector(
+            context = this,
+            fpsLimit = config?.fpsLimit ?: 60,
+            onPointer = { pointerId, x, y, pressed ->
+                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
+                handleAdaptiveColor(x, y)
+            },
+            onBackgroundLog = { eventName, detail, x, y ->
+                // Background logging disabled (no WebSocket server)
+            }
+        ).also { it.start() }
+    }
+
+    private fun startDirectCollector() {
+        if (directCollector != null) return
+
+        directCollector = DirectMimosaCollector(
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->

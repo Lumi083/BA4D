@@ -52,4 +52,16 @@ class MainActivity : AppCompatActivity() {
             true
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        android.util.Log.d("MainActivity", "onStart - sending APP_FOREGROUND broadcast")
+        sendBroadcast(Intent("com.miradesktop.ba4d.APP_FOREGROUND"))
+    }
+
+    override fun onStop() {
+        super.onStop()
+        android.util.Log.d("MainActivity", "onStop - sending APP_BACKGROUND broadcast")
+        sendBroadcast(Intent("com.miradesktop.ba4d.APP_BACKGROUND"))
+    }
 }

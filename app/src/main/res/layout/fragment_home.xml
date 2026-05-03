@@ -162,25 +162,27 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:orientation="vertical">
+                    android:orientation="horizontal">
 
                     <com.google.android.material.radiobutton.MaterialRadioButton
                         android:id="@+id/radioShizuku"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
                         android:text="@string/mimosa_source_shizuku" />
 
                     <com.google.android.material.radiobutton.MaterialRadioButton
                         android:id="@+id/radioRoot"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
                         android:text="@string/mimosa_source_root" />
 
                     <com.google.android.material.radiobutton.MaterialRadioButton
                         android:id="@+id/radioDirect"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:enabled="false"
+                        android:layout_weight="1"
                         android:text="@string/mimosa_source_direct" />
                 </RadioGroup>
             </LinearLayout>
