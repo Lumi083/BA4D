@@ -245,11 +245,46 @@ class OverlayAccessibilityService : AccessibilityService() {
     }
 
     private fun startInputCollectorIfPossible() {
-        // Priority: Root > Shizuku
-        if (RootMimosaCollector.isRootAvailable()) {
-            startRootCollector()
-        } else if (ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()) {
-            startShizukuCollector()
+        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+
+        android.util.Log.d("OverlayAccessibilityService", "Selected mimosa data source: $source")
+        android.util.Log.d("OverlayAccessibilityService", "Root available: ${RootMimosaCollector.isRootAvailable()}")
+        android.util.Log.d("OverlayAccessibilityService", "Shizuku ready: ${ShizukuMimosaCollector.isShizukuReady()}, permission: ${ShizukuMimosaCollector.hasShizukuPermission()}")
+
+        when (source) {
+            "root" -> {
+                if (RootMimosaCollector.isRootAvailable()) {
+                    android.util.Log.i("OverlayAccessibilityService", "Starting Root collector")
+                    startRootCollector()
+                } else {
+                    android.util.Log.w("OverlayAccessibilityService", "Root source selected but root not available")
+                }
+            }
+            "shizuku" -> {
+                if (ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()) {
+                    android.util.Log.i("OverlayAccessibilityService", "Starting Shizuku collector")
+                    startShizukuCollector()
+                } else {
+                    android.util.Log.w("OverlayAccessibilityService", "Shizuku source selected but Shizuku not ready or not authorized")
+                }
+            }
+            "direct" -> {
+                android.util.Log.w("OverlayAccessibilityService", "Direct capture not yet implemented")
+            }
+            else -> {
+                android.util.Log.d("OverlayAccessibilityService", "Unknown source, using auto-detection")
+                // Fallback to auto-detection: Root > Shizuku
+                if (RootMimosaCollector.isRootAvailable()) {
+                    android.util.Log.i("OverlayAccessibilityService", "Auto-detected: Starting Root collector")
+                    startRootCollector()
+                } else if (ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()) {
+                    android.util.Log.i("OverlayAccessibilityService", "Auto-detected: Starting Shizuku collector")
+                    startShizukuCollector()
+                } else {
+                    android.util.Log.w("OverlayAccessibilityService", "No input collector available")
+                }
+            }
         }
     }
 

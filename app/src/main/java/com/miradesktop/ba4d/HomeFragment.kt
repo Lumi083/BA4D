@@ -58,6 +58,7 @@ class HomeFragment : Fragment() {
         val config = loadConfig()
         bindConfig(config)
         setupListeners()
+        loadMimosaDataSource()
     }
 
     override fun onResume() {
@@ -101,6 +102,12 @@ class HomeFragment : Fragment() {
         )
         val colonSplitter = enabledServices?.split(":")?.map { it.trim() } ?: emptyList()
         val targetService = "${requireContext().packageName}/${OverlayAccessibilityService::class.java.name}"
+
+        android.util.Log.d("HomeFragment", "Enabled services string: $enabledServices")
+        android.util.Log.d("HomeFragment", "Target service: $targetService")
+        android.util.Log.d("HomeFragment", "Service list: $colonSplitter")
+        android.util.Log.d("HomeFragment", "Contains target: ${colonSplitter.contains(targetService)}")
+
         return colonSplitter.contains(targetService)
     }
 
@@ -139,9 +146,13 @@ class HomeFragment : Fragment() {
             val config = readConfig()
             BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), config)
 
+            android.util.Log.d("HomeFragment", "Start button clicked")
+
             // Prefer accessibility service if enabled
             val useAccessibility = isAccessibilityServiceEnabled()
             val useOverlay = !useAccessibility && Settings.canDrawOverlays(requireContext())
+
+            android.util.Log.d("HomeFragment", "useAccessibility=$useAccessibility, useOverlay=$useOverlay")
 
             if (!useAccessibility && !useOverlay) {
                 Toast.makeText(requireContext(), "需要无障碍服务或悬浮窗权限", Toast.LENGTH_LONG).show()
@@ -166,6 +177,7 @@ class HomeFragment : Fragment() {
                 val manager = requireContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
             } else {
+                android.util.Log.d("HomeFragment", "Calling startOverlay(useAccessibility=$useAccessibility)")
                 startOverlay(useAccessibility)
                 updateStartButtonState()
             }
@@ -215,6 +227,16 @@ class HomeFragment : Fragment() {
         binding.trailColorPreset2.setOnClickListener { binding.trailColorInput.setText("rgba(255, 100, 100, 1)") }
         binding.trailColorPreset3.setOnClickListener { binding.trailColorInput.setText("rgba(100, 200, 255, 1)") }
         binding.trailColorPreset4.setOnClickListener { binding.trailColorInput.setText("rgba(255, 200, 100, 1)") }
+
+        binding.mimosaDataSourceRadioGroup.setOnCheckedChangeListener { _, checkedId ->
+            val source = when (checkedId) {
+                R.id.radioShizuku -> "shizuku"
+                R.id.radioRoot -> "root"
+                R.id.radioDirect -> "direct"
+                else -> "shizuku"
+            }
+            saveMimosaDataSource(source)
+        }
 
         val autoSave = { saveConfig() }
         binding.fpsLimitInput.addTextChangedListener(object : android.text.TextWatcher {
@@ -287,6 +309,8 @@ class HomeFragment : Fragment() {
     }
 
     private fun startOverlay(useAccessibility: Boolean = false) {
+        android.util.Log.d("HomeFragment", "startOverlay called with useAccessibility=$useAccessibility")
+
         val startupFile = requireContext().getSharedPreferences("app_prefs", 0).getString("startup_file", null)
         val url = if (startupFile != null) {
             // Check if it's a user-created file in filesDir
@@ -301,7 +325,10 @@ class HomeFragment : Fragment() {
             "file:///android_asset/ba-spark-lite.mira.html"
         }
 
+        android.util.Log.d("HomeFragment", "Loading URL: $url")
+
         if (useAccessibility) {
+            android.util.Log.d("HomeFragment", "Starting OverlayAccessibilityService")
             // Use accessibility service
             val intent = Intent(requireContext(), OverlayAccessibilityService::class.java).apply {
                 action = OverlayAccessibilityService.ACTION_START_OVERLAY
@@ -314,6 +341,7 @@ class HomeFragment : Fragment() {
             requireContext().startService(intent)
             overlay_visible = true;
         } else {
+            android.util.Log.d("HomeFragment", "Starting OverlayService")
             // Use regular overlay service
             val intent = Intent(requireContext(), OverlayService::class.java).apply {
                 putExtra(OverlayService.EXTRA_URL, url)
@@ -333,5 +361,21 @@ class HomeFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private fun loadMimosaDataSource() {
+        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+        when (source) {
+            "shizuku" -> binding.radioShizuku.isChecked = true
+            "root" -> binding.radioRoot.isChecked = true
+            "direct" -> binding.radioDirect.isChecked = true
+            else -> binding.radioShizuku.isChecked = true
+        }
+    }
+
+    private fun saveMimosaDataSource(source: String) {
+        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("mimosa_data_source", source).apply()
     }
 }
