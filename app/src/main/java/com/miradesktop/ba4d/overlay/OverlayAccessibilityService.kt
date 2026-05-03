@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Color
@@ -19,6 +20,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.miradesktop.ba4d.MainActivity
 import com.miradesktop.ba4d.R
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
 import com.miradesktop.ba4d.nativews.AndroidMimosaServer
@@ -133,29 +135,31 @@ class OverlayAccessibilityService : AccessibilityService() {
 
     private fun startForegroundForMediaProjection() {
         val channelId = "baspark_media_projection"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "BA Spark 屏幕捕获",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager?.createNotificationChannel(channel)
-        }
+        val channel = NotificationChannel(
+            channelId,
+            "BA Spark 屏幕捕获",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager?.createNotificationChannel(channel)
 
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-                .setContentTitle("BA Spark")
-                .setContentText("自适应颜色正在运行")
-                .setSmallIcon(android.R.drawable.ic_menu_view)
-                .build()
-        } else {
-            Notification.Builder(this)
-                .setContentTitle("BA Spark")
-                .setContentText("自适应颜色正在运行")
-                .setSmallIcon(android.R.drawable.ic_menu_view)
-                .build()
+        val openMainIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            openMainIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification =
+            Notification.Builder(this, channelId)
+                .setContentTitle(getString(R.string.overlay_notification_title))
+                .setContentText(getString(R.string.accessibility_overlay_notification_text))
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .setContentIntent(pendingIntent)   // 点击通知打开 MainActivity
+                .setOngoing(true)
+                .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
