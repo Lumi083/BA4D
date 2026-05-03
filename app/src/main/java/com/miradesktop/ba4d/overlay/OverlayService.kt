@@ -26,7 +26,6 @@ import com.miradesktop.ba4d.R
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import com.miradesktop.ba4d.root.RootMimosaCollector
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
-import org.json.JSONObject
 import kotlin.math.max
 
 class OverlayService : Service() {
@@ -35,7 +34,6 @@ class OverlayService : Service() {
         const val EXTRA_URL = "extra_url"
         const val EXTRA_PROJECTION_RESULT_CODE = "extra_projection_result_code"
         const val EXTRA_PROJECTION_DATA = "extra_projection_data"
-        const val MIMOSA_TOUCH_WS_PORT = 48291
 
         private const val NOTIFICATION_CHANNEL_ID = "overlay_runner"
         private const val NOTIFICATION_ID = 7
@@ -43,8 +41,6 @@ class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
     private var webView: WebView? = null
-    private var mimosaServer: AndroidMimosaServer? = null
-    private var mimosaServerPort: Int = -1
     private var shizukuCollector: ShizukuMimosaCollector? = null
     private var rootCollector: RootMimosaCollector? = null
     private var miraAdapter: MiraAPIAdapter? = null
@@ -62,7 +58,6 @@ class OverlayService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
 
         config = loadBasparkConfig()
-        ensureMimosaServer(config!!.port)
         startInputCollectorIfPossible()
 
         if (config!!.adaptiveColor) {
@@ -101,9 +96,6 @@ class OverlayService : Service() {
         rootCollector = null
         screenSampler?.stop()
         screenSampler = null
-        mimosaServer?.stopSafe()
-        mimosaServer = null
-        mimosaServerPort = -1
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as? android.media.projection.MediaProjectionManager
@@ -184,14 +176,6 @@ class OverlayService : Service() {
         webView = overlayWebView
     }
 
-    private fun ensureMimosaServer(port: Int) {
-        // Disabled: using MiraAPI instead of WebSocket
-        // if (mimosaServer != null && mimosaServerPort == port) return
-        // mimosaServer?.stopSafe()
-        // mimosaServer = AndroidMimosaServer(port).also { it.startSafe() }
-        // mimosaServerPort = port
-    }
-
     private fun loadBasparkConfig(): BASparkConfig {
         val prefs = getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE)
         return BASparkConfig.fromPreferences(prefs)
@@ -231,23 +215,11 @@ class OverlayService : Service() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                val btnMask = if (pressed) 1 else 0
-                mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
                 miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
                 handleAdaptiveColor(x, y)
             },
             onBackgroundLog = { eventName, detail, x, y ->
-                val json = JSONObject()
-                    .put("type", "bg")
-                    .put("event", eventName)
-                    .put("package", "root-shell")
-                    .put("class", detail)
-                    .put("text", "")
-                    .put("x", x)
-                    .put("y", y)
-                    .put("ts", System.currentTimeMillis())
-                    .toString()
-                mimosaServer?.publishBackgroundEvent(json)
+                // Background logging disabled (no WebSocket server)
             }
         ).also { it.start() }
     }
@@ -259,23 +231,11 @@ class OverlayService : Service() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                val btnMask = if (pressed) 1 else 0
-                mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
                 miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
                 handleAdaptiveColor(x, y)
             },
             onBackgroundLog = { eventName, detail, x, y ->
-                val json = JSONObject()
-                    .put("type", "bg")
-                    .put("event", eventName)
-                    .put("package", "shizuku-shell")
-                    .put("class", detail)
-                    .put("text", "")
-                    .put("x", x)
-                    .put("y", y)
-                    .put("ts", System.currentTimeMillis())
-                    .toString()
-                mimosaServer?.publishBackgroundEvent(json)
+                // Background logging disabled (no WebSocket server)
             }
         ).also { it.start() }
     }

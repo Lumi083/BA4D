@@ -23,10 +23,8 @@ import android.webkit.WebViewClient
 import com.miradesktop.ba4d.MainActivity
 import com.miradesktop.ba4d.R
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
-import com.miradesktop.ba4d.nativews.AndroidMimosaServer
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import com.miradesktop.ba4d.root.RootMimosaCollector
-import org.json.JSONObject
 import kotlin.math.max
 
 class OverlayAccessibilityService : AccessibilityService() {
@@ -41,8 +39,6 @@ class OverlayAccessibilityService : AccessibilityService() {
 
     private var windowManager: WindowManager? = null
     private var webView: WebView? = null
-    private var mimosaServer: AndroidMimosaServer? = null
-    private var mimosaServerPort: Int = -1
     private var shizukuCollector: ShizukuMimosaCollector? = null
     private var rootCollector: RootMimosaCollector? = null
     private var miraAdapter: MiraAPIAdapter? = null
@@ -65,7 +61,6 @@ class OverlayAccessibilityService : AccessibilityService() {
         when (intent?.action) {
             ACTION_START_OVERLAY -> {
                 config = loadBasparkConfig()
-                ensureMimosaServer(config!!.port)
                 startInputCollectorIfPossible()
 
                 if (config!!.adaptiveColor) {
@@ -104,9 +99,6 @@ class OverlayAccessibilityService : AccessibilityService() {
                 rootCollector = null
                 screenSampler?.stop()
                 screenSampler = null
-                mimosaServer?.stopSafe()
-                mimosaServer = null
-                mimosaServerPort = -1
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 }
@@ -124,9 +116,6 @@ class OverlayAccessibilityService : AccessibilityService() {
         rootCollector = null
         screenSampler?.stop()
         screenSampler = null
-        mimosaServer?.stopSafe()
-        mimosaServer = null
-        mimosaServerPort = -1
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -233,10 +222,6 @@ class OverlayAccessibilityService : AccessibilityService() {
         webView = overlayWebView
     }
 
-    private fun ensureMimosaServer(port: Int) {
-        // Disabled: using MiraAPI instead of WebSocket
-    }
-
     private fun loadBasparkConfig(): BASparkConfig {
         val prefs = getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE)
         return BASparkConfig.fromPreferences(prefs)
@@ -275,23 +260,11 @@ class OverlayAccessibilityService : AccessibilityService() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                val btnMask = if (pressed) 1 else 0
-                mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
                 miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
                 handleAdaptiveColor(x, y)
             },
             onBackgroundLog = { eventName, detail, x, y ->
-                val json = JSONObject()
-                    .put("type", "bg")
-                    .put("event", eventName)
-                    .put("package", "root-shell")
-                    .put("class", detail)
-                    .put("text", "")
-                    .put("x", x)
-                    .put("y", y)
-                    .put("ts", System.currentTimeMillis())
-                    .toString()
-                mimosaServer?.publishBackgroundEvent(json)
+                // Background logging disabled (no WebSocket server)
             }
         ).also { it.start() }
     }
@@ -303,23 +276,11 @@ class OverlayAccessibilityService : AccessibilityService() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                val btnMask = if (pressed) 1 else 0
-                mimosaServer?.publishMouse(x = x, y = y, btnMask = btnMask)
                 miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
                 handleAdaptiveColor(x, y)
             },
             onBackgroundLog = { eventName, detail, x, y ->
-                val json = JSONObject()
-                    .put("type", "bg")
-                    .put("event", eventName)
-                    .put("package", "shizuku-shell")
-                    .put("class", detail)
-                    .put("text", "")
-                    .put("x", x)
-                    .put("y", y)
-                    .put("ts", System.currentTimeMillis())
-                    .toString()
-                mimosaServer?.publishBackgroundEvent(json)
+                // Background logging disabled (no WebSocket server)
             }
         ).also { it.start() }
     }
