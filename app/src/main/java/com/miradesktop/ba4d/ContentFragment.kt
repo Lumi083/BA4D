@@ -13,12 +13,16 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.miradesktop.ba4d.databinding.FragmentContentBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
 import com.miradesktop.ba4d.overlay.OverlayService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class ContentFragment : Fragment() {
@@ -28,12 +32,7 @@ class ContentFragment : Fragment() {
     private var selectedFile: String? = null
     private lateinit var adapter: FileAdapter
 
-    companion object {
-        private val BUILTIN_FILES = setOf(
-            "ba-spark-lite.mira.html",
-            "ba-spark-simple.html"
-        )
-    }
+    private val assetFiles = mutableSetOf<String>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentContentBinding.inflate(inflater, container, false)
@@ -63,9 +62,13 @@ class ContentFragment : Fragment() {
 
     private fun refreshFiles() {
         files.clear()
+        assetFiles.clear()
 
         // Load from assets (builtin files)
-        requireContext().assets.list("")?.filter { it.endsWith(".html") }?.let { files.addAll(it) }
+        requireContext().assets.list("")?.filter { it.endsWith(".html") }?.let {
+            assetFiles.addAll(it)
+            files.addAll(it)
+        }
 
         // Load from filesDir (user-created files)
         requireContext().filesDir.listFiles()?.filter { it.name.endsWith(".html") }?.forEach {
@@ -84,47 +87,89 @@ class ContentFragment : Fragment() {
         binding.setDefaultButton.isEnabled = true
         binding.deleteButton.isEnabled = true
 
-        // Load file content - try assets first (builtin), then filesDir (user-created)
-        val content = try {
-            if (BUILTIN_FILES.contains(file)) {
-                // Builtin files from assets
-                requireContext().assets.open(file).bufferedReader().use { it.readText() }
-            } else {
-                // User-created files from filesDir
-                File(requireContext().filesDir, file).readText()
-            }
-        } catch (e: Exception) {
-            Toast.makeText(requireContext(), "加载失败: ${e.message}", Toast.LENGTH_SHORT).show()
-            ""
-        }
+        // Load file content asynchronously to avoid blocking UI
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val fileSize = if (assetFiles.contains(file)) {
+                        // Get asset file size - try openFd first, fallback to reading stream
+                        try {
+                            requireContext().assets.openFd(file).use { it.length }
+                        } catch (e: Exception) {
+                            // For compressed assets, read the stream to get size
+                            requireContext().assets.open(file).use { it.available().toLong() }
+                        }
+                    } else {
+                        // Get user file size
+                        File(requireContext().filesDir, file).length()
+                    }
 
-        binding.filenameInput.setText(file)
-        binding.contentInput.setText(content)
-        updateSaveButtonVisibility()
+                    // Check if file is too large (> 20KB)
+                    if (fileSize > 20 * 1024) {
+                        return@withContext Pair(null, "too_large")
+                    }
+
+                    val content = if (assetFiles.contains(file)) {
+                        // Builtin files from assets
+                        requireContext().assets.open(file).bufferedReader().use { it.readText() }
+                    } else {
+                        // User-created files from filesDir
+                        File(requireContext().filesDir, file).readText()
+                    }
+                    Pair(content, "success")
+                } catch (e: Exception) {
+                    Pair(null, "error: ${e.message}")
+                }
+            }
+
+            when {
+                result.second == "success" -> {
+                    binding.filenameInput.setText(file)
+                    binding.contentInput.setText(result.first)
+                    updateSaveButtonVisibility()
+                }
+                result.second == "too_large" -> {
+                    binding.filenameInput.setText(file)
+                    binding.contentInput.setText("")
+                    Toast.makeText(requireContext(), "文件过大 (>20KB)，不显示内容", Toast.LENGTH_SHORT).show()
+                }
+                else -> {
+                    Toast.makeText(requireContext(), "加载失败: ${result.second}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun viewSource() {
         val file = selectedFile ?: return
-        val content = try {
-            // Try filesDir first (user-created files)
-            val userFile = File(requireContext().filesDir, file)
-            if (userFile.exists()) {
-                userFile.readText()
-            } else {
-                // Fall back to assets (built-in files)
-                requireContext().assets.open(file).bufferedReader().use { it.readText() }
+        lifecycleScope.launch {
+            val content = withContext(Dispatchers.IO) {
+                try {
+                    // Try filesDir first (user-created files)
+                    val userFile = File(requireContext().filesDir, file)
+                    if (userFile.exists()) {
+                        userFile.readText()
+                    } else {
+                        // Fall back to assets (built-in files)
+                        requireContext().assets.open(file).bufferedReader().use { it.readText() }
+                    }
+                } catch (e: Exception) {
+                    null
+                }
             }
-        } catch (e: Exception) {
-            Toast.makeText(requireContext(), "加载失败: ${e.message}", Toast.LENGTH_SHORT).show()
-            return
+
+            if (content != null) {
+                binding.filenameInput.setText(file)
+                binding.contentInput.setText(content)
+            } else {
+                Toast.makeText(requireContext(), "加载失败", Toast.LENGTH_SHORT).show()
+            }
         }
-        binding.filenameInput.setText(file)
-        binding.contentInput.setText(content)
     }
 
     private fun deleteFile() {
         val file = selectedFile ?: return
-        if (BUILTIN_FILES.contains(file)) {
+        if (assetFiles.contains(file)) {
             Toast.makeText(requireContext(), "不允许删除内置文件", Toast.LENGTH_SHORT).show()
             return
         }
@@ -145,7 +190,7 @@ class ContentFragment : Fragment() {
             Toast.makeText(requireContext(), "请输入有效的HTML文件名", Toast.LENGTH_SHORT).show()
             return
         }
-        if (BUILTIN_FILES.contains(name)) {
+        if (assetFiles.contains(name)) {
             Toast.makeText(requireContext(), "不允许覆盖内置文件", Toast.LENGTH_SHORT).show()
             return
         }
