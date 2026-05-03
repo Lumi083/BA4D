@@ -159,6 +159,30 @@ class HomeFragment : Fragment() {
                 return@setOnClickListener
             }
 
+            // Check if selected Mimosa data source has permission
+            val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val selectedSource = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+
+            val hasRoot = RootMimosaCollector.isRootAvailable()
+            val hasShizuku = ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()
+
+            val sourceHasPermission = when (selectedSource) {
+                "root" -> hasRoot
+                "shizuku" -> hasShizuku
+                "direct" -> true // Direct capture doesn't require special permission
+                else -> false
+            }
+
+            if (!sourceHasPermission) {
+                val errorMessage = when (selectedSource) {
+                    "root" -> "Root 权限不足，请选择其他数据源"
+                    "shizuku" -> "Shizuku 权限不足，请选择其他数据源"
+                    else -> "所选数据源权限不足"
+                }
+                Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
             // Stop any running service first
             if (useAccessibility) {
                 val stopIntent = Intent(requireContext(), OverlayAccessibilityService::class.java).apply {
