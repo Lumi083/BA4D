@@ -123,7 +123,11 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
         state = { isDown: false, lastPos: null, trail: [] };
         this.pointerStates.set(pointerId, state);
       }
-      if (pressed && !state.isDown) { state.lastPos = { x, y }; this.boom(x, y); }
+      if (pressed && !state.isDown) {
+        state.lastPos = { x, y };
+        state.trail = []; // 清空旧轨迹，防止串线
+        this.boom(x, y);
+      }
 
       // 松手时标记状态但不立即删除轨迹，让动画继续播放
       if (!pressed && !this.alwaysTrail) {
@@ -227,7 +231,7 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
 
         for (const [pointerId, state] of this.pointerStates) {
           const trail = state.trail;
-          const decayRate = (this.alwaysTrail ? 0.085 : (state.isDown ? 0.085 : 0.18)) * frameScale;
+          const decayRate = (this.alwaysTrail ? 0.051 : (state.isDown ? 0.051 : 0.082)) * frameScale;
 
           for (let i = trail.length - 1; i >= 0; i--) {
             trail[i].life -= decayRate;
