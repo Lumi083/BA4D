@@ -1,8 +1,10 @@
 package com.miradesktop.ba4d
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -14,6 +16,7 @@ import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.miradesktop.ba4d.databinding.FragmentHomeBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
@@ -69,6 +72,20 @@ class HomeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+
+        val hasNotificationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // 低于API 33，默认认为有权限（系统自动处理）
+        }
+
+        if(!hasNotificationPermission) {
+            Toast.makeText(requireContext(), "请开启通知权限", Toast.LENGTH_LONG).show()
+            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().packageName)
+            }
+            startActivity(intent)
+        }
 
         // Check accessibility service status
         binding.accessibilityPermissionStatus.text = getString(
