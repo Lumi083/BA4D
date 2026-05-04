@@ -2,7 +2,7 @@ name: Build & Release BA4D
 
 on:
   push:
-    branches: [main, develop]
+    branches: ['**']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -31,40 +31,49 @@ jobs:
         id: version
         run: |
           VERSION=$(./gradlew -q printVersion | tail -n1)
-          TAG="v$VERSION"
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            TAG="v$VERSION-dev"
+          else
+            TAG="v$VERSION"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Preparing release for $TAG"
 
       - name: Check if should create release
         id: check
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Recreate release
+      - name: Create or update release
         if: steps.check.outputs.should_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
 
-          # Delete existing release if it exists
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-
-          # Create new release
-          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            # For main branch: delete old release and corresponding dev release
+            gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+            gh release delete "$TAG-dev" --yes --cleanup-tag 2>/dev/null || true
+            gh release create "$TAG" \
+              --title "BA4D $TAG" \
+              --generate-notes
+          else
+            # For develop branch: create pre-release (don't delete old ones)
             gh release create "$TAG" \
               --title "Development Build $TAG" \
               --notes "Development build from develop branch
           Commit: ${{ github.sha }}" \
               --prerelease
-          else
-            gh release create "$TAG" \
-              --title "BA4D $TAG" \
-              --generate-notes
           fi
 
   # ───────────────────────────────────────────────────────────────────────────
