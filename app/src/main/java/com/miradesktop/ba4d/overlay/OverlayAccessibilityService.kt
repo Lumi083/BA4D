@@ -149,9 +149,7 @@ class OverlayAccessibilityService : AccessibilityService() {
                 directCollector = null
                 screenSampler?.stop()
                 screenSampler = null
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                }
+                stopForeground(STOP_FOREGROUND_REMOVE)
             }
         }
         return START_STICKY
@@ -172,9 +170,7 @@ class OverlayAccessibilityService : AccessibilityService() {
         screenSampler?.stop()
         screenSampler = null
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     private fun startForegroundForMediaProjection() {
@@ -279,41 +275,6 @@ class OverlayAccessibilityService : AccessibilityService() {
         // Set initial touchable state for direct capture overlay
         if (isDirectCapture && isBA4DInForeground) {
             directCollector?.setTouchable(false)
-        }
-    }
-
-    private fun setOverlayTouchable(touchable: Boolean) {
-        val view = webView ?: run {
-            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: webView is null")
-            return
-        }
-        val wm = windowManager ?: run {
-            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: windowManager is null")
-            return
-        }
-
-        val params = view.layoutParams as? WindowManager.LayoutParams ?: run {
-            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: layoutParams is not WindowManager.LayoutParams")
-            return
-        }
-
-        android.util.Log.d("OverlayAccessibilityService", "setOverlayTouchable($touchable) - current flags: ${params.flags}")
-
-        if (touchable) {
-            // Remove FLAG_NOT_TOUCHABLE to allow direct capture to intercept touches
-            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-        } else {
-            // Add FLAG_NOT_TOUCHABLE to let touches pass through
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        }
-
-        android.util.Log.d("OverlayAccessibilityService", "setOverlayTouchable($touchable) - new flags: ${params.flags}")
-
-        try {
-            wm.updateViewLayout(view, params)
-            android.util.Log.d("OverlayAccessibilityService", "updateViewLayout succeeded")
-        } catch (e: Exception) {
-            android.util.Log.e("OverlayAccessibilityService", "updateViewLayout failed", e)
         }
     }
 
