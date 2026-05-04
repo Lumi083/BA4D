@@ -243,15 +243,30 @@ class HomeFragment : Fragment() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/RikkaApps/Shizuku/releases")))
         }
         binding.resetConfigButton.setOnClickListener {
+            val startupFile = requireContext().getSharedPreferences("app_prefs", 0)
+                .getString("startup_file", null) ?: "ba-spark-lite.mira.html"
+            val supportedParams = HtmlParameterParser.parseHtmlFile(requireContext(), startupFile)
+
+            // Use HTML defaults if available, otherwise use BASparkConfig defaults
             val defaults = BASparkConfig()
-            bindConfig(defaults)
-            BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), defaults)
+
+            supportedParams.colorDefault?.let { binding.colorInput.setText(it) } ?: binding.colorInput.setText(defaults.color)
+            supportedParams.trailColorDefault?.let { binding.trailColorInput.setText(it) } ?: binding.trailColorInput.setText(defaults.trailColor)
+            supportedParams.scaleDefault?.let { binding.scaleInput.setText(it.toString()) } ?: binding.scaleInput.setText(defaults.scale.toString())
+            supportedParams.speedDefault?.let { binding.speedInput.setText(it.toString()) } ?: binding.speedInput.setText(defaults.speed.toString())
+            supportedParams.maxTrailDefault?.let { binding.maxTrailInput.setText(it.toString()) } ?: binding.maxTrailInput.setText(defaults.maxTrail.toString())
+            supportedParams.sparkRateDefault?.let { binding.sparkRateInput.setText(it.toString()) } ?: binding.sparkRateInput.setText(defaults.sparkRate.toString())
+            supportedParams.opacityMulDefault?.let { binding.opacityMulInput.setText(it.toString()) } ?: binding.opacityMulInput.setText(defaults.opacityMul.toString())
+            supportedParams.fpsLimitDefault?.let { binding.fpsLimitInput.setText(it.toString()) } ?: binding.fpsLimitInput.setText(defaults.fpsLimit.toString())
+
+            BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), readConfig())
         }
         binding.mainColorPreset0.setOnClickListener { binding.colorInput.setText("rgba(35, 207, 255, 1)") }
         binding.mainColorPreset1.setOnClickListener { binding.colorInput.setText("rgba(122, 0, 255, 1)") }
         binding.mainColorPreset2.setOnClickListener { binding.colorInput.setText("rgba(255, 60, 60, 1)") }
         binding.mainColorPreset3.setOnClickListener { binding.colorInput.setText("rgba(87, 167, 255, 1)") }
         binding.mainColorPreset4.setOnClickListener { binding.colorInput.setText("rgba(255, 162, 40, 1)") }
+        binding.mainColorPreset5.setOnClickListener { binding.colorInput.setText("rgba(178, 235, 254, 1)") }
         binding.trailColorPreset0.setOnClickListener { binding.trailColorInput.setText("rgba(0, 200, 255, 1)") }
         binding.trailColorPreset1.setOnClickListener { binding.trailColorInput.setText("rgba(150, 100, 255, 1)") }
         binding.trailColorPreset2.setOnClickListener { binding.trailColorInput.setText("rgba(255, 100, 100, 1)") }

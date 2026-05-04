@@ -19,17 +19,27 @@ object HtmlParameterParser {
         val sparkRate: Boolean = false,
         val opacityMul: Boolean = false,
         val fpsLimit: Boolean = false,
-        val alwaysTrail: Boolean = false
+        val alwaysTrail: Boolean = false,
+        // Default values from HTML
+        val colorDefault: String? = null,
+        val trailColorDefault: String? = null,
+        val scaleDefault: Float? = null,
+        val speedDefault: Float? = null,
+        val maxTrailDefault: Int? = null,
+        val sparkRateDefault: Float? = null,
+        val opacityMulDefault: Float? = null,
+        val fpsLimitDefault: Int? = null
     )
 
     /**
      * Parse HTML file to detect which parameters are supported
-     * Looks for patterns like: $rgba | color | ... or $num | scale | ...
+     * Looks for patterns like: $rgba | color | ... : defaultValue or $num | scale | ... : defaultValue
      */
     fun parseHtmlFile(context: Context, filename: String): SupportedParams {
         val content = readFileContent(context, filename) ?: return SupportedParams()
 
         val params = mutableSetOf<String>()
+        val defaults = mutableMapOf<String, String>()
 
         // Parse HTML comment header (first 50 lines should be enough)
         val lines = content.lines().take(50)
@@ -43,10 +53,20 @@ object HtmlParameterParser {
             }
 
             if (inComment) {
-                // Match patterns like: $rgba | color | ... or $num | scale | ...
-                val paramMatch = Regex("""\$\w+\s*\|\s*(\w+)""").find(trimmed)
+                // Match patterns like: $rgba | color | ... : rgba(255, 255, 180, 1)
+                // or $num | scale | ... : 1.0
+                // Use lastIndexOf to find the last colon
+                val paramMatch = Regex("""\$\w+\s*\|\s*(\w+)\s*\|""").find(trimmed)
                 if (paramMatch != null) {
-                    params.add(paramMatch.groupValues[1])
+                    val paramName = paramMatch.groupValues[1]
+                    params.add(paramName)
+
+                    // Find the last colon to extract default value
+                    val lastColonIndex = trimmed.lastIndexOf(':')
+                    if (lastColonIndex != -1 && lastColonIndex < trimmed.length - 1) {
+                        val defaultValue = trimmed.substring(lastColonIndex + 1).trim()
+                        defaults[paramName] = defaultValue
+                    }
                 }
 
                 if (trimmed.contains("-->")) {
@@ -65,7 +85,15 @@ object HtmlParameterParser {
             sparkRate = params.contains("sparkRate"),
             opacityMul = params.contains("opacityMul"),
             fpsLimit = params.contains("fpsLimit"),
-            alwaysTrail = params.contains("alwaysTrail")
+            alwaysTrail = params.contains("alwaysTrail"),
+            colorDefault = defaults["color"],
+            trailColorDefault = defaults["trailColor"],
+            scaleDefault = defaults["scale"]?.toFloatOrNull(),
+            speedDefault = defaults["speed"]?.toFloatOrNull(),
+            maxTrailDefault = defaults["maxTrail"]?.toIntOrNull(),
+            sparkRateDefault = defaults["sparkRate"]?.toFloatOrNull(),
+            opacityMulDefault = defaults["opacityMul"]?.toFloatOrNull(),
+            fpsLimitDefault = defaults["fpsLimit"]?.toIntOrNull()
         )
     }
 
