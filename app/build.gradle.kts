@@ -3,12 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val copyLauncherIcon = tasks.register<Copy>("copyLauncherIcon") {
-    from("${rootDir}/icon.png")
-    into(layout.buildDirectory.dir("generated/res/icon/mipmap-xxxhdpi"))
-    rename { "ic_launcher.png" }
-}
-
 val syncVersionToAssets = tasks.register("syncVersionToAssets") {
     doLast {
         val versionFile = file("src/main/assets/version.txt")
@@ -70,10 +64,6 @@ android {
             res.srcDir(layout.buildDirectory.dir("generated/res/icon"))
         }
     }
-}
-
-tasks.named("preBuild") {
-    dependsOn(copyLauncherIcon, syncVersionToAssets)
 }
 
 tasks.register("printVersion") {
