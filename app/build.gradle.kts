@@ -9,6 +9,12 @@ val copyLauncherIcon = tasks.register<Copy>("copyLauncherIcon") {
     rename { "ic_launcher.png" }
 }
 
+val copyPhigrosLauncherIcon = tasks.register<Copy>("copyPhigrosLauncherIcon") {
+    from("${rootDir}/icon_phigros.png")
+    into(layout.buildDirectory.dir("generated/res/icon-phigros/mipmap-xxxhdpi"))
+    rename { "ic_launcher.png" }
+}
+
 val syncVersionToAssets = tasks.register("syncVersionToAssets") {
     doLast {
         val versionFile = file("src/main/assets/version.txt")
@@ -22,13 +28,26 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.miradesktop.ba4d"
         minSdk = 26
         targetSdk = 33
         versionCode = 1
         versionName = "1.2.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    flavorDimensions += "app"
+    productFlavors {
+        create("ba4d") {
+            dimension = "app"
+            applicationId = "com.miradesktop.ba4d"
+            versionNameSuffix = ""
+        }
+        create("phigros") {
+            dimension = "app"
+            applicationId = "com.miradesktop.phigros"
+            versionNameSuffix = "-phigros"
+        }
     }
 
     signingConfigs {
@@ -69,11 +88,14 @@ android {
             java.srcDirs("src/main/java", "${rootDir}/src/native")
             res.srcDir(layout.buildDirectory.dir("generated/res/icon"))
         }
+        getByName("phigros") {
+            res.srcDir(layout.buildDirectory.dir("generated/res/icon-phigros"))
+        }
     }
 }
 
 tasks.named("preBuild") {
-    dependsOn(copyLauncherIcon, syncVersionToAssets)
+    dependsOn(copyLauncherIcon, copyPhigrosLauncherIcon, syncVersionToAssets)
 }
 
 tasks.register("printVersion") {

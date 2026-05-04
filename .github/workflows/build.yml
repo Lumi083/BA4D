@@ -112,7 +112,7 @@ jobs:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      run: ./gradlew assembleRelease
+      run: ./gradlew assembleBa4dRelease assemblePhigrosRelease
 
     - name: Upload APK as artifact
       uses: actions/upload-artifact@v4
