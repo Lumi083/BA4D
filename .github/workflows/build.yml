@@ -82,7 +82,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   build:
     needs: [prepare-release]
-    if: needs.prepare-release.outputs.should_release == 'true'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
@@ -114,7 +114,15 @@ jobs:
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       run: ./gradlew assembleRelease
 
+    - name: Upload APK as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: apk-${{ github.ref_name }}-${{ github.sha }}
+        path: app/build/outputs/apk/**/*.apk
+        retention-days: 30
+
     - name: Upload APK to release
+      if: needs.prepare-release.outputs.should_release == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TAG: ${{ needs.prepare-release.outputs.tag }}
@@ -122,7 +130,7 @@ jobs:
         FILES=()
         while IFS= read -r -d '' f; do
           FILES+=("$f")
-        done < <(find app/build/outputs/apk/release -type f -name '*.apk' -print0)
+        done < <(find app/build/outputs/apk/ -type f -name '*.apk' -print0)
 
         if [ ${#FILES[@]} -eq 0 ]; then
           echo "ERROR: No APK files found" >&2
