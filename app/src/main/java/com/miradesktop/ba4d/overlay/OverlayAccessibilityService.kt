@@ -108,6 +108,7 @@ class OverlayAccessibilityService : AccessibilityService() {
 
                 startInputCollectorIfPossible()
 
+                startForegroundForMediaProjection()
                 if (config!!.adaptiveColor) {
                     val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1)
                     val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
@@ -128,7 +129,6 @@ class OverlayAccessibilityService : AccessibilityService() {
                     getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
                         .putString("current_adaptive_color", "已禁用").apply()
                 }
-                startForegroundForMediaProjection()
 
                 removeOverlay()
                 createOverlay(
