@@ -13,9 +13,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
-import android.util.TypedValue
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -39,6 +37,7 @@ class OverlayAccessibilityService : AccessibilityService() {
         const val EXTRA_URL = "extra_url"
         const val EXTRA_PROJECTION_RESULT_CODE = "extra_projection_result_code"
         const val EXTRA_PROJECTION_DATA = "extra_projection_data"
+        private const val NOTIFICATION_CHANNEL_ID = "overlay_runner"
     }
 
     private var windowManager: WindowManager? = null
@@ -174,10 +173,9 @@ class OverlayAccessibilityService : AccessibilityService() {
     }
 
     private fun startForegroundForMediaProjection() {
-        val channelId = "baspark_media_projection"
         val channel = NotificationChannel(
-            channelId,
-            "BA Spark 屏幕捕获",
+            NOTIFICATION_CHANNEL_ID,
+            getString(R.string.overlay_notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         )
         val notificationManager = getSystemService(NotificationManager::class.java)
@@ -193,7 +191,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification =
-            Notification.Builder(this, channelId)
+            Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
                 .setContentTitle(getString(R.string.overlay_notification_title))
                 .setContentText(getString(R.string.accessibility_overlay_notification_text))
                 .setSmallIcon(android.R.drawable.ic_menu_view)
@@ -439,14 +437,6 @@ class OverlayAccessibilityService : AccessibilityService() {
                 }
             }
         }
-    }
-
-    private fun startShizukuCollectorIfPossible() {
-        if (shizukuCollector != null) return
-        if (!ShizukuMimosaCollector.isShizukuReady()) return
-        if (!ShizukuMimosaCollector.hasShizukuPermission()) return
-
-        startShizukuCollector()
     }
 
     private fun removeOverlay() {
