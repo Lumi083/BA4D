@@ -101,7 +101,6 @@ class HomeFragment : Fragment() {
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val am = requireContext().getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val enabledServices = Settings.Secure.getString(
             requireContext().contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES

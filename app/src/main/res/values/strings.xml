@@ -44,7 +44,7 @@
     <string name="start_overlay">启动</string>
     <string name="restart_overlay">重启</string>
     <string name="stop_overlay">停止</string>
-    <string name="overlay_notification_channel_name">BA Spark</string>
+    <string name="overlay_notification_channel_name">BA Spark运行时通知</string>
     <string name="overlay_notification_title">BA Spark Running</string>
     <string name="overlay_notification_text">正在以悬浮窗模式运行</string>
     <string name="accessibility_overlay_notification_text">正在以无障碍模式运行</string>

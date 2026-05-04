@@ -13,9 +13,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
-import android.util.TypedValue
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -39,6 +37,7 @@ class OverlayAccessibilityService : AccessibilityService() {
         const val EXTRA_URL = "extra_url"
         const val EXTRA_PROJECTION_RESULT_CODE = "extra_projection_result_code"
         const val EXTRA_PROJECTION_DATA = "extra_projection_data"
+        private const val NOTIFICATION_CHANNEL_ID = "overlay_runner"
     }
 
     private var windowManager: WindowManager? = null
@@ -108,6 +107,7 @@ class OverlayAccessibilityService : AccessibilityService() {
 
                 startInputCollectorIfPossible()
 
+                startForegroundForMediaProjection()
                 if (config!!.adaptiveColor) {
                     val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1)
                     val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
@@ -128,7 +128,6 @@ class OverlayAccessibilityService : AccessibilityService() {
                     getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
                         .putString("current_adaptive_color", "已禁用").apply()
                 }
-                startForegroundForMediaProjection()
 
                 removeOverlay()
                 createOverlay(
@@ -149,9 +148,7 @@ class OverlayAccessibilityService : AccessibilityService() {
                 directCollector = null
                 screenSampler?.stop()
                 screenSampler = null
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                }
+                stopForeground(STOP_FOREGROUND_REMOVE)
             }
         }
         return START_STICKY
@@ -172,16 +169,13 @@ class OverlayAccessibilityService : AccessibilityService() {
         screenSampler?.stop()
         screenSampler = null
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     private fun startForegroundForMediaProjection() {
-        val channelId = "baspark_media_projection"
         val channel = NotificationChannel(
-            channelId,
-            "BA Spark 屏幕捕获",
+            NOTIFICATION_CHANNEL_ID,
+            getString(R.string.overlay_notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         )
         val notificationManager = getSystemService(NotificationManager::class.java)
@@ -197,7 +191,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification =
-            Notification.Builder(this, channelId)
+            Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
                 .setContentTitle(getString(R.string.overlay_notification_title))
                 .setContentText(getString(R.string.accessibility_overlay_notification_text))
                 .setSmallIcon(android.R.drawable.ic_menu_view)
@@ -279,41 +273,6 @@ class OverlayAccessibilityService : AccessibilityService() {
         // Set initial touchable state for direct capture overlay
         if (isDirectCapture && isBA4DInForeground) {
             directCollector?.setTouchable(false)
-        }
-    }
-
-    private fun setOverlayTouchable(touchable: Boolean) {
-        val view = webView ?: run {
-            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: webView is null")
-            return
-        }
-        val wm = windowManager ?: run {
-            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: windowManager is null")
-            return
-        }
-
-        val params = view.layoutParams as? WindowManager.LayoutParams ?: run {
-            android.util.Log.w("OverlayAccessibilityService", "setOverlayTouchable: layoutParams is not WindowManager.LayoutParams")
-            return
-        }
-
-        android.util.Log.d("OverlayAccessibilityService", "setOverlayTouchable($touchable) - current flags: ${params.flags}")
-
-        if (touchable) {
-            // Remove FLAG_NOT_TOUCHABLE to allow direct capture to intercept touches
-            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-        } else {
-            // Add FLAG_NOT_TOUCHABLE to let touches pass through
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        }
-
-        android.util.Log.d("OverlayAccessibilityService", "setOverlayTouchable($touchable) - new flags: ${params.flags}")
-
-        try {
-            wm.updateViewLayout(view, params)
-            android.util.Log.d("OverlayAccessibilityService", "updateViewLayout succeeded")
-        } catch (e: Exception) {
-            android.util.Log.e("OverlayAccessibilityService", "updateViewLayout failed", e)
         }
     }
 
@@ -478,14 +437,6 @@ class OverlayAccessibilityService : AccessibilityService() {
                 }
             }
         }
-    }
-
-    private fun startShizukuCollectorIfPossible() {
-        if (shizukuCollector != null) return
-        if (!ShizukuMimosaCollector.isShizukuReady()) return
-        if (!ShizukuMimosaCollector.hasShizukuPermission()) return
-
-        startShizukuCollector()
     }
 
     private fun removeOverlay() {
