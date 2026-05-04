@@ -68,7 +68,8 @@ jobs:
               --title "BA4D $TAG" \
               --generate-notes
           else
-            # For develop branch: create pre-release (don't delete old ones)
+            # For develop branch: delete old dev release and create new pre-release
+            gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
             gh release create "$TAG" \
               --title "Development Build $TAG" \
               --notes "Development build from develop branch
