@@ -82,7 +82,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   build:
     needs: [prepare-release]
-    if: needs.prepare-release.outputs.should_release == 'true'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
@@ -114,7 +114,15 @@ jobs:
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       run: ./gradlew assembleRelease
 
+    - name: Upload APK as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: apk-${{ github.ref_name }}-${{ github.sha }}
+        path: app/build/outputs/apk/release/*.apk
+        retention-days: 30
+
     - name: Upload APK to release
+      if: needs.prepare-release.outputs.should_release == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TAG: ${{ needs.prepare-release.outputs.tag }}
