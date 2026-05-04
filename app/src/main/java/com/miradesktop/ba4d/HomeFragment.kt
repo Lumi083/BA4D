@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import com.miradesktop.ba4d.databinding.FragmentHomeBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
+import com.miradesktop.ba4d.overlay.HtmlParameterParser
 import com.miradesktop.ba4d.overlay.OverlayAccessibilityService
 import com.miradesktop.ba4d.overlay.OverlayService
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
@@ -59,6 +60,11 @@ class HomeFragment : Fragment() {
         bindConfig(config)
         setupListeners()
         loadMimosaDataSource()
+        updateParameterVisibility()
+    }
+
+    fun onStartupFileChanged() {
+        updateParameterVisibility()
     }
 
     override fun onResume() {
@@ -330,6 +336,35 @@ class HomeFragment : Fragment() {
             opacityMul = readFloat(binding.opacityMulInput.text, d.opacityMul, 0f, 1f),
             port = d.port
         )
+    }
+
+    private fun updateParameterVisibility() {
+        val startupFile = requireContext().getSharedPreferences("app_prefs", 0)
+            .getString("startup_file", null) ?: "ba-spark-lite.mira.html"
+
+        val supportedParams = HtmlParameterParser.parseHtmlFile(requireContext(), startupFile)
+
+        android.util.Log.d("HomeFragment", "updateParameterVisibility: file=$startupFile, params=$supportedParams")
+
+        // Show/hide input fields based on supported parameters
+        binding.scaleInputLayout.visibility = if (supportedParams.scale) View.VISIBLE else View.GONE
+        binding.speedInputLayout.visibility = if (supportedParams.speed) View.VISIBLE else View.GONE
+        binding.colorInputLayout.visibility = if (supportedParams.color) View.VISIBLE else View.GONE
+        binding.trailColorInputLayout.visibility = if (supportedParams.trailColor) View.VISIBLE else View.GONE
+        binding.maxTrailInputLayout.visibility = if (supportedParams.maxTrail) View.VISIBLE else View.GONE
+        binding.sparkRateInputLayout.visibility = if (supportedParams.sparkRate) View.VISIBLE else View.GONE
+        binding.opacityMulInputLayout.visibility = if (supportedParams.opacityMul) View.VISIBLE else View.GONE
+        binding.fpsLimitInputLayout.visibility = if (supportedParams.fpsLimit) View.VISIBLE else View.GONE
+
+        // Hide color preset labels and containers
+        val mainColorPresetsVisible = if (supportedParams.color) View.VISIBLE else View.GONE
+        binding.mainColorPresetsLabel.visibility = mainColorPresetsVisible
+        binding.mainColorPresetsContainer.visibility = mainColorPresetsVisible
+
+        val trailColorPresetsVisible = if (supportedParams.trailColor) View.VISIBLE else View.GONE
+        android.util.Log.d("HomeFragment", "trailColorPresetsVisible=$trailColorPresetsVisible (${if (trailColorPresetsVisible == View.VISIBLE) "VISIBLE" else "GONE"})")
+        binding.trailColorPresetsLabel.visibility = trailColorPresetsVisible
+        binding.trailColorPresetsContainer.visibility = trailColorPresetsVisible
     }
 
     private fun startOverlay(useAccessibility: Boolean = false) {

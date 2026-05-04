@@ -204,6 +204,13 @@ class ContentFragment : Fragment() {
         requireContext().getSharedPreferences("app_prefs", 0).edit().putString("startup_file", file).apply()
         adapter.notifyDataSetChanged()
 
+        // Notify HomeFragment to update parameter visibility
+        requireActivity().supportFragmentManager.fragments.forEach { fragment ->
+            if (fragment is HomeFragment) {
+                fragment.onStartupFileChanged()
+            }
+        }
+
         if (isServiceRunning(OverlayService::class.java)) {
             restartOverlay()
             Toast.makeText(requireContext(), "已启用", Toast.LENGTH_SHORT).show()
