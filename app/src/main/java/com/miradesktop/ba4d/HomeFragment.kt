@@ -11,9 +11,9 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.Fragment
 import com.miradesktop.ba4d.databinding.FragmentHomeBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
@@ -69,7 +69,6 @@ class HomeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-
         // Check accessibility service status
         binding.accessibilityPermissionStatus.text = getString(
             if (isAccessibilityServiceEnabled()) R.string.accessibility_permission_granted else R.string.accessibility_permission_missing
@@ -83,7 +82,6 @@ class HomeFragment : Fragment() {
         // Check Shizuku/Root permission status
         val hasRoot = RootMimosaCollector.isRootAvailable()
         val hasShizuku = ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()
-        val hasPrivilegedAccess = hasRoot || hasShizuku
 
         binding.shizukuPermissionStatus.text = getString(
             when {
@@ -93,9 +91,14 @@ class HomeFragment : Fragment() {
             }
         )
 
-        // Hide Shizuku buttons if root or Shizuku is available
-        binding.openShizukuPermissionButton.visibility = if (hasPrivilegedAccess) View.GONE else View.VISIBLE
-        binding.downloadShizukuButton.visibility = if (hasPrivilegedAccess) View.GONE else View.VISIBLE
+        if (hasShizuku) {
+            binding.openShizukuPermissionButton.visibility = View.GONE
+            binding.downloadShizukuButton.visibility = View.GONE
+        }
+
+        if (isNotificationEnabled(requireContext())) {
+            binding.notificationPermissionButton.visibility = View.GONE
+        }
 
         updateStartButtonState()
     }
@@ -222,6 +225,13 @@ class HomeFragment : Fragment() {
             projectionData = null
             overlay_visible = false;
             updateStartButtonState()
+        }
+        binding.notificationPermissionButton.setOnClickListener {
+            Toast.makeText(requireContext(), "请开启通知权限", Toast.LENGTH_LONG).show()
+            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().packageName)
+            }
+            startActivity(intent)
         }
         binding.openAccessibilityPermissionButton.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -450,5 +460,9 @@ class HomeFragment : Fragment() {
     private fun saveMimosaDataSource(source: String) {
         val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("mimosa_data_source", source).apply()
+    }
+
+    fun isNotificationEnabled(context: Context): Boolean {
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 }
