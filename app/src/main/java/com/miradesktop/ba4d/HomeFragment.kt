@@ -16,6 +16,7 @@ import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.miradesktop.ba4d.databinding.FragmentHomeBinding
@@ -72,21 +73,6 @@ class HomeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-
-        val hasNotificationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true // 低于API 33，默认认为有权限（系统自动处理）
-        }
-
-        if(!hasNotificationPermission) {
-            Toast.makeText(requireContext(), "请开启通知权限", Toast.LENGTH_LONG).show()
-            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().packageName)
-            }
-            startActivity(intent)
-        }
-
         // Check accessibility service status
         binding.accessibilityPermissionStatus.text = getString(
             if (isAccessibilityServiceEnabled()) R.string.accessibility_permission_granted else R.string.accessibility_permission_missing
@@ -109,6 +95,10 @@ class HomeFragment : Fragment() {
                 else -> R.string.shizuku_permission_missing
             }
         )
+
+        if (hasShizuku) {
+            binding.downloadShizukuButton.visibility = View.GONE
+        }
 
         // Hide Shizuku buttons if root or Shizuku is available
         binding.openShizukuPermissionButton.visibility = if (hasPrivilegedAccess) View.GONE else View.VISIBLE
@@ -467,5 +457,9 @@ class HomeFragment : Fragment() {
     private fun saveMimosaDataSource(source: String) {
         val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("mimosa_data_source", source).apply()
+    }
+
+    fun isNotificationEnabled(context: Context): Boolean {
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 }
