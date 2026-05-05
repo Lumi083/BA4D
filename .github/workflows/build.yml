@@ -78,9 +78,9 @@ jobs:
           fi
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Build Android APK
+  # Build Android APK - BA4D
   # ───────────────────────────────────────────────────────────────────────────
-  build:
+  build-ba4d:
     needs: [prepare-release]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -107,21 +107,21 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build with Gradle
+    - name: Build BA4D with Gradle
       env:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      run: ./gradlew assembleBa4dRelease assemblePhigrosRelease
+      run: ./gradlew assembleBa4dRelease
 
-    - name: Upload APK as artifact
+    - name: Upload BA4D APK as artifact
       uses: actions/upload-artifact@v4
       with:
-        name: apk-${{ github.ref_name }}-${{ github.sha }}
-        path: app/build/outputs/apk/**/*.apk
+        name: apk-ba4d-${{ github.ref_name }}-${{ github.sha }}
+        path: app/build/outputs/apk/ba4d/release/*.apk
         retention-days: 30
 
-    - name: Upload APK to release
+    - name: Upload BA4D APK to release
       if: needs.prepare-release.outputs.should_release == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -130,10 +130,73 @@ jobs:
         FILES=()
         while IFS= read -r -d '' f; do
           FILES+=("$f")
-        done < <(find app/build/outputs/apk/ -type f -name '*.apk' -print0)
+        done < <(find app/build/outputs/apk/ba4d/release/ -type f -name '*.apk' -print0)
 
         if [ ${#FILES[@]} -eq 0 ]; then
-          echo "ERROR: No APK files found" >&2
+          echo "ERROR: No BA4D APK files found" >&2
+          exit 1
+        fi
+
+        gh release upload "$TAG" "${FILES[@]}" --clobber
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Build Android APK - Phigros
+  # ───────────────────────────────────────────────────────────────────────────
+  build-phigros:
+    needs: [prepare-release]
+    if: false
+    # if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Create folder
+      run: |
+        mkdir jks
+
+    - name: Decode keystore
+      run: |
+        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > jks/.jks
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build Phigros with Gradle
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      run: ./gradlew assemblePhigrosRelease
+
+    - name: Upload Phigros APK as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: apk-phigros-${{ github.ref_name }}-${{ github.sha }}
+        path: app/build/outputs/apk/phigros/release/*.apk
+        retention-days: 30
+
+    - name: Upload Phigros APK to release
+      if: needs.prepare-release.outputs.should_release == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ needs.prepare-release.outputs.tag }}
+      run: |
+        FILES=()
+        while IFS= read -r -d '' f; do
+          FILES+=("$f")
+        done < <(find app/build/outputs/apk/phigros/release/ -type f -name '*.apk' -print0)
+
+        if [ ${#FILES[@]} -eq 0 ]; then
+          echo "ERROR: No Phigros APK files found" >&2
           exit 1
         fi
 
