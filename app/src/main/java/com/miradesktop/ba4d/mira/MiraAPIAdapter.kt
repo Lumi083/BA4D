@@ -63,7 +63,6 @@ class MiraAPIAdapter(
             put("device", "touch")
             put("payload", base64)
         }
-        Log.d("MiraAPI", "Sending touch input: pointerId=$pointerId, x=$x, y=$y, pressed=$pressed")
         postMessage(json)
     }
 
