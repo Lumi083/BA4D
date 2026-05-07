@@ -2,16 +2,27 @@ package com.miradesktop.ba4d
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import com.miradesktop.ba4d.databinding.FragmentDebugBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
 import com.miradesktop.ba4d.overlay.OverlayService
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class DebugFragment : Fragment() {
     private var _binding: FragmentDebugBinding? = null
@@ -35,6 +46,7 @@ class DebugFragment : Fragment() {
             val intent = android.content.Intent(requireContext(), CalibrationActivity::class.java)
             startActivity(intent)
         }
+        binding.captureLogcatButton.setOnClickListener { captureLogcat() }
         refreshDebug()
     }
 
@@ -68,13 +80,6 @@ class DebugFragment : Fragment() {
             "${if (exists) "✓" else "✗"} $file"
         }
 
-        binding.apiStatusTextView.text = """
-传输方式: MiraAPI (postMessage)
-WebSocket: 已禁用
-Shizuku 服务: ${if (shizukuReady) "运行中" else "未运行"}
-Shizuku 权限: ${if (shizukuPerm) "已授权" else "未授权"}
-        """.trimIndent()
-
         binding.overlayStatusTextView.text = """
 悬浮窗服务: ${if (isServiceRunning) "✓ 运行中" else "✗ 未启动"}
 悬浮窗权限: ${if (hasOverlayPerm) "✓ 已授权" else "✗ 未授权"}
@@ -85,8 +90,7 @@ FPS限制: ${config.fpsLimit}
 颜色: ${config.color}
 自适应颜色: ${if (config.adaptiveColor) "✓ 启用" else "✗ 禁用"}
 当前颜色: $currentColor
-缩放: ${config.scale}
-速度: ${config.speed}
+缩放: ${config.scale} 
 最大轨迹: ${config.maxTrail}
 
 Assets 文件:
@@ -100,6 +104,79 @@ ${if (!isServiceRunning) "• 悬浮窗服务未启动\n" else ""}${if (!hasOver
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
         val manager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         return manager.getRunningServices(Int.MAX_VALUE).any { it.service.className == serviceClass.name }
+    }
+
+    private fun captureLogcat() {
+        binding.captureLogcatButton.isEnabled = false
+        Toast.makeText(requireContext(), "正在捕获日志...", Toast.LENGTH_SHORT).show()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                val logFile = File(requireContext().getExternalFilesDir(null), "ba4d_logs_$timestamp.txt")
+
+                logFile.bufferedWriter().use { writer ->
+                    writer.write("=== BA4D Complete Log Export ===\n")
+                    writer.write("Export Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n\n")
+
+                    val crashFiles = requireContext().getExternalFilesDir(null)?.listFiles { file ->
+                        file.name.startsWith("crash_") && file.name.endsWith(".txt")
+                    }?.sortedByDescending { it.lastModified() }
+
+                    if (!crashFiles.isNullOrEmpty()) {
+                        writer.write("=== Crash Reports (${crashFiles.size}) ===\n\n")
+                        crashFiles.forEach { crashFile ->
+                            writer.write("--- ${crashFile.name} ---\n")
+                            crashFile.bufferedReader().use { reader ->
+                                reader.copyTo(writer)
+                            }
+                            writer.write("\n\n")
+                        }
+                    } else {
+                        writer.write("=== No Crash Reports Found ===\n\n")
+                    }
+
+                    writer.write("=== Logcat Output ===\n\n")
+                    val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-v", "threadtime"))
+                    process.inputStream.bufferedReader().use { reader ->
+                        reader.copyTo(writer)
+                    }
+                    process.waitFor()
+                }
+
+                withContext(Dispatchers.Main) {
+                    binding.captureLogcatButton.isEnabled = true
+                    shareLogFile(logFile)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    binding.captureLogcatButton.isEnabled = true
+                    Toast.makeText(requireContext(), "捕获日志失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun shareLogFile(file: File) {
+        try {
+            val uri = FileProvider.getUriForFile(
+                requireContext(),
+                "${requireContext().packageName}.fileprovider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "BA4D Logcat 日志")
+                putExtra(Intent.EXTRA_TEXT, "日志文件: ${file.name}")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            startActivity(Intent.createChooser(intent, "分享日志文件"))
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "分享日志失败: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onDestroyView() {

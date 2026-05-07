@@ -38,23 +38,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="API 状态"
-            android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
-
-        <TextView
-            android:id="@+id/apiStatusTextView"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="#20000000"
-            android:fontFamily="monospace"
-            android:padding="12dp"
-            android:textSize="12sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
             android:text="悬浮窗状态"
             android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
 
@@ -67,6 +50,13 @@
             android:fontFamily="monospace"
             android:padding="12dp"
             android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/captureLogcatButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="导出日志" />
 
     </LinearLayout>
 </ScrollView>
