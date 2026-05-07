@@ -216,11 +216,10 @@ class OverlayAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 (if (isDirectCapture) 0 else WindowManager.LayoutParams.FLAG_FULLSCREEN) or
                 WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or
                 WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION,
-            PixelFormat.TRANSLUCENT
+            PixelFormat.RGBA_8888
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 0
