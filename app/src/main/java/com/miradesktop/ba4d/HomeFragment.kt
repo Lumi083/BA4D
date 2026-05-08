@@ -233,13 +233,25 @@ class HomeFragment : Fragment() {
         }
         binding.openShizukuPermissionButton.setOnClickListener {
             if (!ShizukuMimosaCollector.isShizukuReady()) {
-                Toast.makeText(requireContext(), "Shizuku 服务未运行", Toast.LENGTH_LONG).show()
+                // Try to start Shizuku service if app is installed
+                if (isShizukuAppInstalled()) {
+                    tryStartShizukuService()
+                } else {
+                    Toast.makeText(requireContext(), "Shizuku 服务未运行", Toast.LENGTH_LONG).show()
+                }
             } else if (!ShizukuMimosaCollector.hasShizukuPermission()) {
                 Shizuku.requestPermission(ShizukuMimosaCollector.REQUEST_CODE)
             }
         }
         binding.downloadShizukuButton.setOnClickListener {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/RikkaApps/Shizuku/releases")))
+            // Check if Shizuku is installed
+            if (isShizukuAppInstalled()) {
+                // App is installed, try to start the service
+                tryStartShizukuService()
+            } else {
+                // App not installed, go to download page
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/RikkaApps/Shizuku/releases")))
+            }
         }
         binding.resetConfigButton.setOnClickListener {
             val startupFile = requireContext().getSharedPreferences("app_prefs", 0)
@@ -450,5 +462,27 @@ class HomeFragment : Fragment() {
     private fun saveMimosaDataSource(source: String) {
         val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("mimosa_data_source", source).apply()
+    }
+
+    private fun isShizukuAppInstalled(): Boolean {
+        return try {
+            requireContext().packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun tryStartShizukuService() {
+        try {
+            val intent = Intent().apply {
+                setClassName("moe.shizuku.privileged.api", "moe.shizuku.manager.MainActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            Toast.makeText(requireContext(), "正在打开 Shizuku，请启动服务", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "无法打开 Shizuku 应用", Toast.LENGTH_SHORT).show()
+        }
     }
 }
