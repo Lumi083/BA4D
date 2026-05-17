@@ -111,7 +111,6 @@ class OverlayAccessibilityService : AccessibilityService() {
                     val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
                     android.util.Log.d("OverlayAccessibilityService", "adaptiveColor check: resultCode=$resultCode, data=$data")
                     if (data != null) {
-                        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
                         val metrics = resources.displayMetrics
                         screenSampler = ScreenSampler(this).apply {
                             start(resultCode, data, metrics.widthPixels, metrics.heightPixels)

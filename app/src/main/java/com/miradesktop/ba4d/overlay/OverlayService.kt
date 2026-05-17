@@ -107,7 +107,6 @@ class OverlayService : Service() {
             val data = intent?.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
             android.util.Log.d("OverlayService", "adaptiveColor check: resultCode=$resultCode, data=$data, resultCode!=-1=${resultCode != -1}, data!=null=${data != null}")
             if (data != null) {
-                val wm = getSystemService(WINDOW_SERVICE) as WindowManager
                 val metrics = resources.displayMetrics
                 screenSampler = ScreenSampler(this).apply {
                     start(resultCode, data, metrics.widthPixels, metrics.heightPixels)
@@ -141,14 +140,6 @@ class OverlayService : Service() {
         directCollector = null
         screenSampler?.stop()
         screenSampler = null
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as? android.media.projection.MediaProjectionManager
-            mediaProjectionManager?.getMediaProjection(
-                android.app.Activity.RESULT_OK,
-                android.content.Intent()
-            )?.stop()
-        }
     }
 
     private fun createOverlay(inputUrl: String?, config: BASparkConfig) {
