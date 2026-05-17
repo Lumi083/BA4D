@@ -296,6 +296,8 @@ class OverlayAccessibilityService : AccessibilityService() {
     }
 
     private fun startInputCollectorIfPossible() {
+        stopAllCollectors()
+
         val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
         val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
 
@@ -338,6 +340,15 @@ class OverlayAccessibilityService : AccessibilityService() {
                 }
             }
         }
+    }
+
+    private fun stopAllCollectors() {
+        shizukuCollector?.stop()
+        shizukuCollector = null
+        rootCollector?.stop()
+        rootCollector = null
+        directCollector?.stop()
+        directCollector = null
     }
 
     private fun startRootCollector() {
