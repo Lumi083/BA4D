@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -21,7 +22,6 @@ import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
 import com.miradesktop.ba4d.MainActivity
 import com.miradesktop.ba4d.R
@@ -192,31 +192,29 @@ class OverlayService : Service() {
             settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.allowFileAccess = true
-            settings.allowContentAccess = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                settings.allowFileAccessFromFileURLs = true
-                settings.allowUniversalAccessFromFileURLs = true
+                settings.allowFileAccessFromFileURLs = false
+                settings.allowUniversalAccessFromFileURLs = false
             }
             webChromeClient = WebChromeClient()
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    super.onPageFinished(view, url)
-                    android.util.Log.d("OverlayService", "Page loaded: $url")
+            webViewClient = OverlayWebViewClient(this@OverlayService) { _, url ->
+                android.util.Log.d("OverlayService", "Page loaded: $url")
 
-                    // Set element ID for MiraAPI
-                    evaluateJavascript("window.__MIRAAPI_ELEMENT_ID__ = 'baspark-overlay';", null)
+                // Set element ID for MiraAPI
+                evaluateJavascript("window.__MIRAAPI_ELEMENT_ID__ = 'baspark-overlay';", null)
 
-                    miraAdapter = MiraAPIAdapter(this@apply, "baspark-overlay")
-                    pushConfigViaMira(config)
-                }
+                miraAdapter = MiraAPIAdapter(this@apply, "baspark-overlay")
+                pushConfigViaMira(config)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                WebView.setWebContentsDebuggingEnabled(true)
+                val isDebuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                WebView.setWebContentsDebuggingEnabled(isDebuggable)
             }
 
-            loadUrl(inputUrl ?: "file:///android_asset/ba-spark-replica.mira.html")
+            loadUrl(inputUrl ?: OverlayContentUrl.defaultOverlayUrl())
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager

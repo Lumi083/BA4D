@@ -18,12 +18,12 @@ import androidx.fragment.app.Fragment
 import com.miradesktop.ba4d.databinding.FragmentHomeBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
 import com.miradesktop.ba4d.overlay.HtmlParameterParser
+import com.miradesktop.ba4d.overlay.OverlayContentUrl
 import com.miradesktop.ba4d.overlay.OverlayAccessibilityService
 import com.miradesktop.ba4d.overlay.OverlayService
 import com.miradesktop.ba4d.shizuku.ShizukuMimosaCollector
 import com.miradesktop.ba4d.root.RootMimosaCollector
 import rikka.shizuku.Shizuku
-import java.io.File
 
 class HomeFragment : Fragment() {
     private var _binding: FragmentHomeBinding? = null
@@ -397,18 +397,7 @@ class HomeFragment : Fragment() {
         android.util.Log.d("HomeFragment", "startOverlay called with useAccessibility=$useAccessibility")
 
         val startupFile = requireContext().getSharedPreferences("app_prefs", 0).getString("startup_file", null)
-        val url = if (startupFile != null) {
-            // Check if it's a user-created file in filesDir
-            val userFile = File(requireContext().filesDir, startupFile)
-            if (userFile.exists()) {
-                "file://${userFile.absolutePath}"
-            } else {
-                // Fall back to assets (builtin files)
-                "file:///android_asset/$startupFile"
-            }
-        } else {
-            "file:///android_asset/ba-spark-lite.mira.html"
-        }
+        val url = OverlayContentUrl.fromStartupFile(requireContext(), startupFile)
 
         android.util.Log.d("HomeFragment", "Loading URL: $url")
 

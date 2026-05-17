@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.miradesktop.ba4d.databinding.FragmentContentBinding
 import com.miradesktop.ba4d.overlay.BASparkConfig
+import com.miradesktop.ba4d.overlay.OverlayContentUrl
 import com.miradesktop.ba4d.overlay.OverlayService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -228,20 +229,8 @@ class ContentFragment : Fragment() {
         requireContext().stopService(Intent(requireContext(), OverlayService::class.java))
 
         val startupFile = requireContext().getSharedPreferences("app_prefs", 0).getString("startup_file", null)
-        val url = if (startupFile != null) {
-            // Check if it's a user-created file in filesDir
-            val userFile = File(requireContext().filesDir, startupFile)
-            if (userFile.exists()) {
-                "file://${userFile.absolutePath}"
-            } else {
-                // Fall back to assets (builtin files)
-                "file:///android_asset/$startupFile"
-            }
-        } else {
-            "file:///android_asset/ba-spark-lite.mira.html"
-        }
+        val url = OverlayContentUrl.fromStartupFile(requireContext(), startupFile)
 
-        val config = BASparkConfig.fromPreferences(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0))
         val projectionResultCode = requireActivity().intent.getIntExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, -1)
         val projectionData = requireActivity().intent.getParcelableExtra<Intent>(OverlayService.EXTRA_PROJECTION_DATA)
 
