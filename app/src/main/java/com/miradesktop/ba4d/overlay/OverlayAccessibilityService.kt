@@ -54,6 +54,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     private var targetColor = ""
     private var isDirectCapture = false
     private var isBA4DInForeground = false
+    private var isAppStateReceiverRegistered = false
 
     private val appStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -96,13 +97,10 @@ class OverlayAccessibilityService : AccessibilityService() {
                 val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
                 isDirectCapture = (source == "direct")
 
-                // Register broadcast receiver for app state changes
                 if (isDirectCapture) {
-                    val filter = IntentFilter().apply {
-                        addAction("com.miradesktop.ba4d.APP_FOREGROUND")
-                        addAction("com.miradesktop.ba4d.APP_BACKGROUND")
-                    }
-                    registerReceiver(appStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                    ensureAppStateReceiverRegistered()
+                } else {
+                    unregisterAppStateReceiverIfNeeded()
                 }
 
                 startInputCollectorIfPossible()
@@ -136,9 +134,7 @@ class OverlayAccessibilityService : AccessibilityService() {
                 )
             }
             ACTION_STOP_OVERLAY -> {
-                if (isDirectCapture) {
-                    runCatching { unregisterReceiver(appStateReceiver) }
-                }
+                unregisterAppStateReceiverIfNeeded()
                 removeOverlay()
                 shizukuCollector?.stop()
                 shizukuCollector = null
@@ -156,9 +152,7 @@ class OverlayAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (isDirectCapture) {
-            runCatching { unregisterReceiver(appStateReceiver) }
-        }
+        unregisterAppStateReceiverIfNeeded()
         removeOverlay()
         shizukuCollector?.stop()
         shizukuCollector = null
@@ -276,6 +270,28 @@ class OverlayAccessibilityService : AccessibilityService() {
     private fun loadBasparkConfig(): BASparkConfig {
         val prefs = getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE)
         return BASparkConfig.fromPreferences(prefs)
+    }
+
+    private fun ensureAppStateReceiverRegistered() {
+        if (isAppStateReceiverRegistered) {
+            return
+        }
+
+        val filter = IntentFilter().apply {
+            addAction("com.miradesktop.ba4d.APP_FOREGROUND")
+            addAction("com.miradesktop.ba4d.APP_BACKGROUND")
+        }
+        registerReceiver(appStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        isAppStateReceiverRegistered = true
+    }
+
+    private fun unregisterAppStateReceiverIfNeeded() {
+        if (!isAppStateReceiverRegistered) {
+            return
+        }
+
+        runCatching { unregisterReceiver(appStateReceiver) }
+        isAppStateReceiverRegistered = false
     }
 
     private fun pushConfigViaMira(config: BASparkConfig) {
