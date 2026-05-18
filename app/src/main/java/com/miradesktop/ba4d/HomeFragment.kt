@@ -60,6 +60,7 @@ class HomeFragment : Fragment() {
         bindConfig(config)
         setupListeners()
         loadMimosaDataSource()
+        loadAutoStartPreference()
         updateParameterVisibility()
     }
 
@@ -294,6 +295,10 @@ class HomeFragment : Fragment() {
             saveMimosaDataSource(source)
         }
 
+        binding.autoStartOnBootSwitch.setOnCheckedChangeListener { _, isChecked ->
+            saveAutoStartPreference(isChecked)
+        }
+
         val autoSave = { saveConfig() }
         binding.fpsLimitInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) = autoSave()
@@ -451,6 +456,17 @@ class HomeFragment : Fragment() {
     private fun saveMimosaDataSource(source: String) {
         val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("mimosa_data_source", source).apply()
+    }
+
+    private fun loadAutoStartPreference() {
+        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val autoStart = prefs.getBoolean("auto_start_on_boot", false)
+        binding.autoStartOnBootSwitch.isChecked = autoStart
+    }
+
+    private fun saveAutoStartPreference(enabled: Boolean) {
+        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("auto_start_on_boot", enabled).apply()
     }
 
     private fun isShizukuAppInstalled(): Boolean {

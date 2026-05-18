@@ -185,6 +185,20 @@
                         android:layout_weight="1"
                         android:text="@string/mimosa_source_direct" />
                 </RadioGroup>
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/autoStartOnBootSwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="@string/auto_start_on_boot" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/auto_start_on_boot_description"
+                    android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
