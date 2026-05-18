@@ -81,7 +81,7 @@ data class BASparkConfig(
                 .putFloat(KEY_OPACITY_MUL, config.opacityMul)
                 .putInt(KEY_PORT, config.port)
                 .putBoolean(KEY_ADAPTIVE_COLOR, config.adaptiveColor)
-                .commit()
+                .apply()
         }
     }
 }
