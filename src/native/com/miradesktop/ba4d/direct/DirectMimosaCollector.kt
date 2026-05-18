@@ -80,22 +80,23 @@ class DirectMimosaCollector(
         activePointers.clear()
     }
 
-    fun setTouchable(touchable: Boolean) {
+    fun setTouchable(touchable: Boolean): Boolean {
         val view = overlayView ?: run {
             android.util.Log.w("DirectMimosaCollector", "setTouchable: overlayView is null")
-            return
+            return false
         }
         val wm = windowManager ?: run {
             android.util.Log.w("DirectMimosaCollector", "setTouchable: windowManager is null")
-            return
+            return false
         }
 
         val params = view.layoutParams as? WindowManager.LayoutParams ?: run {
             android.util.Log.w("DirectMimosaCollector", "setTouchable: layoutParams is not WindowManager.LayoutParams")
-            return
+            return false
         }
 
         android.util.Log.d("DirectMimosaCollector", "setTouchable($touchable) - current flags: ${params.flags}")
+        val previousFlags = params.flags
 
         if (touchable) {
             // Remove FLAG_NOT_TOUCHABLE to allow capturing touches
@@ -110,8 +111,11 @@ class DirectMimosaCollector(
         try {
             wm.updateViewLayout(view, params)
             android.util.Log.d("DirectMimosaCollector", "updateViewLayout succeeded")
+            return true
         } catch (e: Exception) {
+            params.flags = previousFlags
             android.util.Log.e("DirectMimosaCollector", "updateViewLayout failed", e)
+            return false
         }
     }
 
