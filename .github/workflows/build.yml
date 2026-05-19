@@ -53,6 +53,35 @@ jobs:
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Prepare release notes
+        id: release-notes
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          DATE=$(date +'%Y-%m-%d')
+          
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            RELEASE_TYPE="Stable"
+          else
+            RELEASE_TYPE="Development"
+          fi
+          
+          # Read release.txt and replace variables
+          if [[ -f release.txt ]]; then
+            NOTES=$(cat release.txt | \
+              sed "s|{VERSION}|$VERSION|g" | \
+              sed "s|{DATE}|$DATE|g" | \
+              sed "s|{RELEASE_TYPE}|$RELEASE_TYPE|g")
+          else
+            NOTES="Release $VERSION - $RELEASE_TYPE build\nCommit: ${{ github.sha }}"
+          fi
+          
+          # Store notes in file to handle multiline strings
+          echo "$NOTES" > /tmp/release-notes.txt
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          cat /tmp/release-notes.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Create or update release
         if: steps.check.outputs.should_release == 'true'
         env:
@@ -66,14 +95,13 @@ jobs:
             gh release delete "$TAG-dev" --yes --cleanup-tag 2>/dev/null || true
             gh release create "$TAG" \
               --title "BA4D $TAG" \
-              --generate-notes
+              --notes "${{ steps.release-notes.outputs.notes }}"
           else
             # For develop branch: delete old dev release and create new pre-release
             gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
             gh release create "$TAG" \
               --title "Development Build $TAG" \
-              --notes "Development build from develop branch
-          Commit: ${{ github.sha }}" \
+              --notes "${{ steps.release-notes.outputs.notes }}" \
               --prerelease
           fi
 
