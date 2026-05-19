@@ -2,5 +2,9 @@ Version: {VERSION}, Release Date: {DATE}.
 
 这是一个 {RELEASE_TYPE} 发布。请下载 app-ba4d-release.apk 并安装 BA4D 本体，并通过软件内链接或其他官方途径下载 Shizuku。
 
+## 最近的新功能
+
+- **隐藏后台**：在权限设置卡片中新增"隐藏后台"开关，开启后应用将在最近任务列表中隐藏，避免被清理时终止。
+
 更多情报请从仓库主页了解。喜欢的话请点个star！
 For more information, visit the project repository.

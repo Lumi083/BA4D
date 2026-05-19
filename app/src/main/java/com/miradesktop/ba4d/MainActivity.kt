@@ -1,5 +1,7 @@
 package com.miradesktop.ba4d
 
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -51,6 +53,9 @@ class MainActivity : AppCompatActivity() {
             }
             true
         }
+
+        // Apply hide from recents preference on startup
+        applyHideFromRecentsPreference()
     }
 
     override fun onStart() {
@@ -63,5 +68,16 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
         android.util.Log.d("MainActivity", "onStop - sending APP_BACKGROUND broadcast")
         sendBroadcast(Intent("com.miradesktop.ba4d.APP_BACKGROUND"))
+    }
+
+    private fun applyHideFromRecentsPreference() {
+        try {
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val hideFromRecents = prefs.getBoolean("hide_from_recents", false)
+            val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            activityManager.appTasks.firstOrNull()?.setExcludeFromRecents(hideFromRecents)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to apply excludeFromRecents preference", e)
+        }
     }
 }

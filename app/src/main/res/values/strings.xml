@@ -49,4 +49,5 @@
     <string name="overlay_notification_text">正在以悬浮窗模式运行</string>
     <string name="accessibility_overlay_notification_text">正在以无障碍模式运行</string>
     <string name="accessibility_service_description">用于显示全屏触摸效果悬浮窗，无需额外悬浮窗权限。本服务不会读取或记录任何用户数据。</string>
+    <string name="hide_from_recents_label">在后台列表中隐藏此应用</string>
 </resources>

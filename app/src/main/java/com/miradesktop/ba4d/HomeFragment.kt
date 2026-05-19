@@ -60,6 +60,7 @@ class HomeFragment : Fragment() {
         bindConfig(config)
         setupListeners()
         loadMimosaDataSource()
+        loadHideFromRecentsPreference()
         updateParameterVisibility()
     }
 
@@ -294,6 +295,11 @@ class HomeFragment : Fragment() {
             saveMimosaDataSource(source)
         }
 
+        binding.hideFromRecentsSwitch.setOnCheckedChangeListener { _, isChecked ->
+            saveHideFromRecentsPreference(isChecked)
+            applyHideFromRecents(isChecked)
+        }
+
         val autoSave = { saveConfig() }
         binding.fpsLimitInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) = autoSave()
@@ -472,6 +478,32 @@ class HomeFragment : Fragment() {
             Toast.makeText(requireContext(), "正在打开 Shizuku，请启动服务", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(requireContext(), "无法打开 Shizuku 应用", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun loadHideFromRecentsPreference() {
+        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val hideFromRecents = prefs.getBoolean("hide_from_recents", false)
+        binding.hideFromRecentsSwitch.isChecked = hideFromRecents
+    }
+
+    private fun saveHideFromRecentsPreference(hide: Boolean) {
+        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("hide_from_recents", hide).apply()
+    }
+
+    private fun applyHideFromRecents(hide: Boolean) {
+        try {
+            val activityManager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            activityManager.appTasks.firstOrNull()?.setExcludeFromRecents(hide)
+            Toast.makeText(
+                requireContext(),
+                if (hide) "已在最近任务中隐藏" else "已在最近任务中显示",
+                Toast.LENGTH_SHORT
+            ).show()
+        } catch (e: Exception) {
+            android.util.Log.e("HomeFragment", "Failed to set excludeFromRecents", e)
+            Toast.makeText(requireContext(), "设置失败", Toast.LENGTH_SHORT).show()
         }
     }
 }

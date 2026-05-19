@@ -185,6 +185,13 @@
                         android:layout_weight="1"
                         android:text="@string/mimosa_source_direct" />
                 </RadioGroup>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/hideFromRecentsSwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="@string/hide_from_recents_label" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
