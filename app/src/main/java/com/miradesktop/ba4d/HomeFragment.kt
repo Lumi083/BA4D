@@ -26,6 +26,14 @@ import com.miradesktop.ba4d.root.RootMimosaCollector
 import rikka.shizuku.Shizuku
 
 class HomeFragment : Fragment() {
+    companion object {
+        private const val PREFS_NAME = "app_prefs"
+        private const val KEY_MIMOSA_DATA_SOURCE = "mimosa_data_source"
+        private const val SOURCE_SHIZUKU = "shizuku"
+        private const val SOURCE_ROOT = "root"
+        private const val SOURCE_DIRECT_DEPRECATED = "direct"
+    }
+
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
     private var projectionResultCode: Int = -1
@@ -58,6 +66,8 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val config = loadConfig()
         bindConfig(config)
+        migrateDeprecatedDirectSource()
+        binding.radioDirect.visibility = View.GONE
         setupListeners()
         loadMimosaDataSource()
         loadHideFromRecentsPreference()
@@ -166,23 +176,22 @@ class HomeFragment : Fragment() {
             }
 
             // Check if selected Mimosa data source has permission
-            val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            val selectedSource = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+            val selectedSource = getMimosaDataSource()
 
             val hasRoot = RootMimosaCollector.isRootAvailable()
             val hasShizuku = ShizukuMimosaCollector.isShizukuReady() && ShizukuMimosaCollector.hasShizukuPermission()
 
             val sourceHasPermission = when (selectedSource) {
-                "root" -> hasRoot
-                "shizuku" -> hasShizuku
-                "direct" -> true // Direct capture doesn't require special permission
+                SOURCE_ROOT -> hasRoot
+                SOURCE_SHIZUKU -> hasShizuku
                 else -> false
             }
 
             if (!sourceHasPermission) {
                 val errorMessage = when (selectedSource) {
-                    "root" -> "Root 权限不足，请选择其他数据源"
-                    "shizuku" -> "Shizuku 权限不足，请选择其他数据源"
+                    SOURCE_ROOT -> "Root 权限不足，请选择其他数据源"
+                    SOURCE_SHIZUKU -> "Shizuku 权限不足，请选择其他数据源"
+                    SOURCE_DIRECT_DEPRECATED -> "直接捕获已弃用，请使用 Shizuku 或 Root"
                     else -> "所选数据源权限不足"
                 }
                 Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_LONG).show()
@@ -287,10 +296,8 @@ class HomeFragment : Fragment() {
 
         binding.mimosaDataSourceRadioGroup.setOnCheckedChangeListener { _, checkedId ->
             val source = when (checkedId) {
-                R.id.radioShizuku -> "shizuku"
-                R.id.radioRoot -> "root"
-                R.id.radioDirect -> "direct"
-                else -> "shizuku"
+                R.id.radioRoot -> SOURCE_ROOT
+                else -> SOURCE_SHIZUKU
             }
             saveMimosaDataSource(source)
         }
@@ -444,19 +451,31 @@ class HomeFragment : Fragment() {
     }
 
     private fun loadMimosaDataSource() {
-        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
-        when (source) {
-            "shizuku" -> binding.radioShizuku.isChecked = true
-            "root" -> binding.radioRoot.isChecked = true
-            "direct" -> binding.radioDirect.isChecked = true
+        when (getMimosaDataSource()) {
+            SOURCE_ROOT -> binding.radioRoot.isChecked = true
             else -> binding.radioShizuku.isChecked = true
         }
     }
 
     private fun saveMimosaDataSource(source: String) {
-        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putString("mimosa_data_source", source).apply()
+        val normalized = if (source == SOURCE_DIRECT_DEPRECATED) SOURCE_SHIZUKU else source
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_MIMOSA_DATA_SOURCE, normalized).apply()
+    }
+
+    private fun getMimosaDataSource(): String {
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val source = prefs.getString(KEY_MIMOSA_DATA_SOURCE, SOURCE_SHIZUKU) ?: SOURCE_SHIZUKU
+        return if (source == SOURCE_DIRECT_DEPRECATED) {
+            prefs.edit().putString(KEY_MIMOSA_DATA_SOURCE, SOURCE_SHIZUKU).apply()
+            SOURCE_SHIZUKU
+        } else {
+            source
+        }
+    }
+
+    private fun migrateDeprecatedDirectSource() {
+        getMimosaDataSource()
     }
 
     private fun isShizukuAppInstalled(): Boolean {

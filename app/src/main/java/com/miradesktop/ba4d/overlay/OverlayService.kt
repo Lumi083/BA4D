@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -90,8 +91,7 @@ class OverlayService : Service() {
         config = loadBasparkConfig()
 
         // Check if using direct capture mode
-        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
-        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+        val source = getMimosaDataSource()
         isDirectCapture = (source == "direct")
 
         if (isDirectCapture) {
@@ -103,15 +103,20 @@ class OverlayService : Service() {
         startInputCollectorIfPossible()
 
         if (config!!.adaptiveColor) {
+            startForegroundForMediaProjection()
             val resultCode = intent?.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1) ?: -1
             val data = intent?.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
             android.util.Log.d("OverlayService", "adaptiveColor check: resultCode=$resultCode, data=$data, resultCode!=-1=${resultCode != -1}, data!=null=${data != null}")
             if (data != null) {
                 val metrics = resources.displayMetrics
-                screenSampler = ScreenSampler(this).apply {
-                    start(resultCode, data, metrics.widthPixels, metrics.heightPixels)
+                val sampler = ScreenSampler(this)
+                if (runCatching { sampler.start(resultCode, data, metrics.widthPixels, metrics.heightPixels) }.isSuccess) {
+                    screenSampler = sampler
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "等待触摸检测").apply()
+                } else {
+                    sampler.stop()
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "屏幕捕获启动失败").apply()
                 }
-                getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "等待触摸检测").apply()
             } else {
                 getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", "未授权屏幕捕获").apply()
             }
@@ -205,8 +210,15 @@ class OverlayService : Service() {
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        windowManager?.addView(overlayWebView, params)
-        webView = overlayWebView
+        try {
+            windowManager?.addView(overlayWebView, params)
+            webView = overlayWebView
+        } catch (e: RuntimeException) {
+            android.util.Log.e("OverlayService", "Failed to add overlay window", e)
+            overlayWebView.destroy()
+            windowManager = null
+            return
+        }
 
         // Set initial touchable state for direct capture overlay
         if (isDirectCapture && isBA4DInForeground) {
@@ -261,8 +273,7 @@ class OverlayService : Service() {
     private fun startInputCollectorIfPossible() {
         stopAllCollectors()
 
-        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
-        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+        val source = getMimosaDataSource()
 
         android.util.Log.d("OverlayService", "Selected mimosa data source: $source")
         android.util.Log.d("OverlayService", "Root available: ${RootMimosaCollector.isRootAvailable()}")
@@ -349,7 +360,7 @@ class OverlayService : Service() {
     private fun startDirectCollector() {
         if (directCollector != null) return
 
-        directCollector = DirectMimosaCollector(
+        val collector = DirectMimosaCollector(
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
@@ -359,7 +370,11 @@ class OverlayService : Service() {
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
             }
-        ).also { it.start() }
+        )
+
+        if (collector.start()) {
+            directCollector = collector
+        }
     }
 
     private fun handleAdaptiveColor(x: Int, y: Int) {
@@ -431,6 +446,27 @@ class OverlayService : Service() {
             NotificationManager.IMPORTANCE_LOW
         )
         manager.createNotificationChannel(channel)
+    }
+
+    private fun startForegroundForMediaProjection() {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun getMimosaDataSource(): String {
+        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+        return if (source == "direct") {
+            android.util.Log.w("OverlayService", "Direct capture is deprecated; falling back to Shizuku")
+            prefs.edit().putString("mimosa_data_source", "shizuku").apply()
+            "shizuku"
+        } else {
+            source
+        }
     }
 
     private fun buildNotification(): Notification {

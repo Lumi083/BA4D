@@ -21,6 +21,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.Toast
 import com.miradesktop.ba4d.MainActivity
 import com.miradesktop.ba4d.R
 import com.miradesktop.ba4d.mira.MiraAPIAdapter
@@ -55,6 +56,8 @@ class OverlayAccessibilityService : AccessibilityService() {
     private var isDirectCapture = false
     private var isBA4DInForeground = false
     private var isAppStateReceiverRegistered = false
+    private var isServiceConnected = false
+    private var pendingStartIntent: Intent? = null
 
     private val appStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -87,52 +90,32 @@ class OverlayAccessibilityService : AccessibilityService() {
         // Handle interruption if needed
     }
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        isServiceConnected = true
+        pendingStartIntent?.let { pending ->
+            pendingStartIntent = null
+            handleStartOverlay(pending)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_OVERLAY -> {
-                config = loadBasparkConfig()
-
-                // Check if using direct capture mode
-                val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
-                val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
-                isDirectCapture = (source == "direct")
-
-                if (isDirectCapture) {
-                    ensureAppStateReceiverRegistered()
+                if (!isServiceConnected) {
+                    android.util.Log.w("OverlayAccessibilityService", "Accessibility service is not connected yet; deferring overlay start")
+                    Toast.makeText(
+                        this,
+                        "无障碍服务加载中；反复出现此提示时请向开发者反馈",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    pendingStartIntent = Intent(intent)
                 } else {
-                    unregisterAppStateReceiverIfNeeded()
+                    handleStartOverlay(intent)
                 }
-
-                startInputCollectorIfPossible()
-
-                startForegroundForMediaProjection()
-                if (config!!.adaptiveColor) {
-                    val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1)
-                    val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
-                    android.util.Log.d("OverlayAccessibilityService", "adaptiveColor check: resultCode=$resultCode, data=$data")
-                    if (data != null) {
-                        val metrics = resources.displayMetrics
-                        screenSampler = ScreenSampler(this).apply {
-                            start(resultCode, data, metrics.widthPixels, metrics.heightPixels)
-                        }
-                        getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
-                            .putString("current_adaptive_color", "等待触摸检测").apply()
-                    } else {
-                        getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
-                            .putString("current_adaptive_color", "未授权屏幕捕获").apply()
-                    }
-                } else {
-                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
-                        .putString("current_adaptive_color", "已禁用").apply()
-                }
-
-                removeOverlay()
-                createOverlay(
-                    inputUrl = intent.getStringExtra(EXTRA_URL),
-                    config = config!!
-                )
             }
             ACTION_STOP_OVERLAY -> {
+                pendingStartIntent = null
                 unregisterAppStateReceiverIfNeeded()
                 removeOverlay()
                 shizukuCollector?.stop()
@@ -149,8 +132,57 @@ class OverlayAccessibilityService : AccessibilityService() {
         return START_STICKY
     }
 
+    private fun handleStartOverlay(intent: Intent) {
+        config = loadBasparkConfig()
+
+        val source = getMimosaDataSource()
+        isDirectCapture = (source == "direct")
+
+        if (isDirectCapture) {
+            ensureAppStateReceiverRegistered()
+        } else {
+            unregisterAppStateReceiverIfNeeded()
+        }
+
+        startForegroundForMediaProjection()
+        startInputCollectorIfPossible()
+
+        if (config!!.adaptiveColor) {
+            val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1)
+            val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
+            android.util.Log.d("OverlayAccessibilityService", "adaptiveColor check: resultCode=$resultCode, data=$data")
+            if (data != null) {
+                val metrics = resources.displayMetrics
+                val sampler = ScreenSampler(this)
+                if (runCatching { sampler.start(resultCode, data, metrics.widthPixels, metrics.heightPixels) }.isSuccess) {
+                    screenSampler = sampler
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString("current_adaptive_color", "等待触摸检测").apply()
+                } else {
+                    sampler.stop()
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString("current_adaptive_color", "屏幕捕获启动失败").apply()
+                }
+            } else {
+                getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                    .putString("current_adaptive_color", "未授权屏幕捕获").apply()
+            }
+        } else {
+            getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                .putString("current_adaptive_color", "已禁用").apply()
+        }
+
+        removeOverlay()
+        createOverlay(
+            inputUrl = intent.getStringExtra(EXTRA_URL),
+            config = config!!
+        )
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        isServiceConnected = false
+        pendingStartIntent = null
         unregisterAppStateReceiverIfNeeded()
         removeOverlay()
         shizukuCollector?.stop()
@@ -257,8 +289,15 @@ class OverlayAccessibilityService : AccessibilityService() {
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        windowManager?.addView(overlayWebView, params)
-        webView = overlayWebView
+        try {
+            windowManager?.addView(overlayWebView, params)
+            webView = overlayWebView
+        } catch (e: RuntimeException) {
+            android.util.Log.e("OverlayAccessibilityService", "Failed to add accessibility overlay window", e)
+            overlayWebView.destroy()
+            windowManager = null
+            return
+        }
 
         // Set initial touchable state for direct capture overlay
         if (isDirectCapture && isBA4DInForeground) {
@@ -313,8 +352,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     private fun startInputCollectorIfPossible() {
         stopAllCollectors()
 
-        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
-        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+        val source = getMimosaDataSource()
 
         android.util.Log.d("OverlayAccessibilityService", "Selected mimosa data source: $source")
         android.util.Log.d("OverlayAccessibilityService", "Root available: ${RootMimosaCollector.isRootAvailable()}")
@@ -401,7 +439,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     private fun startDirectCollector() {
         if (directCollector != null) return
 
-        directCollector = DirectMimosaCollector(
+        val collector = DirectMimosaCollector(
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
@@ -411,7 +449,11 @@ class OverlayAccessibilityService : AccessibilityService() {
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
             }
-        ).also { it.start() }
+        )
+
+        if (collector.start()) {
+            directCollector = collector
+        }
     }
 
     private fun handleAdaptiveColor(x: Int, y: Int) {
@@ -471,5 +513,17 @@ class OverlayAccessibilityService : AccessibilityService() {
         }
         webView = null
         windowManager = null
+    }
+
+    private fun getMimosaDataSource(): String {
+        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        val source = prefs.getString("mimosa_data_source", "shizuku") ?: "shizuku"
+        return if (source == "direct") {
+            android.util.Log.w("OverlayAccessibilityService", "Direct capture is deprecated; falling back to Shizuku")
+            prefs.edit().putString("mimosa_data_source", "shizuku").apply()
+            "shizuku"
+        } else {
+            source
+        }
     }
 }

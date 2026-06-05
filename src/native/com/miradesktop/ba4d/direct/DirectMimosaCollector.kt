@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Collect touch input events directly from an overlay window.
- * This method doesn't require special permissions but the overlay must be touchable.
+ *
+ * Deprecated: this path depends on app overlay windows and is no longer exposed
+ * in the normal UI. Prefer Shizuku or Root collectors for background input.
  */
 class DirectMimosaCollector(
     private val context: Context,
@@ -28,8 +30,8 @@ class DirectMimosaCollector(
     // Track active pointers
     private val activePointers = mutableMapOf<Int, Pair<Int, Int>>()
 
-    fun start() {
-        if (!active.compareAndSet(false, true)) return
+    fun start(): Boolean {
+        if (!active.compareAndSet(false, true)) return true
 
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -65,8 +67,18 @@ class DirectMimosaCollector(
             }
         }
 
-        windowManager?.addView(overlayView, params)
-        android.util.Log.d("DirectMimosaCollector", "Overlay view created with flags: ${params.flags}")
+        return try {
+            windowManager?.addView(overlayView, params)
+            android.util.Log.d("DirectMimosaCollector", "Overlay view created with flags: ${params.flags}")
+            true
+        } catch (e: RuntimeException) {
+            android.util.Log.e("DirectMimosaCollector", "Failed to create deprecated direct capture overlay", e)
+            active.set(false)
+            overlayView = null
+            windowManager = null
+            activePointers.clear()
+            false
+        }
     }
 
     fun stop() {
