@@ -15,10 +15,80 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="说明：\n1. 先在主页启动悬浮窗\n2. 使用数字滚轮调整 X 和 Y 缩放系数。\n动画偏右：调小 X。动画偏下：调小 Y。\n动画偏左：调大 X。动画偏上：调大 Y。\n3. 在页面底部点击测试。\n4. 自动保存，退出即可。"
+        android:text="说明：\n1. 先在主页启动悬浮窗\n2. 使用数字滚轮调整 X 和 Y 缩放系数和偏移量。\n动画偏右：调小 X 系数。动画偏下：调小 Y 系数。\n动画偏左：调大 X 系数。动画偏上：调大 Y 系数。\n偏移量用于微调坐标位置（-1000% 到 1000%）。\n3. 在页面底部点击测试。\n4. 自动保存，退出即可。"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
         android:lineSpacingMultiplier="1.2"
         android:layout_marginBottom="16dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <CheckBox
+            android:id="@+id/rotationSpecificCheckbox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="为旋转后的屏幕单独设置校准"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/rotationButtonsLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="旋转："
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+            android:layout_marginEnd="8dp"
+            android:layout_gravity="center_vertical" />
+
+        <Button
+            android:id="@+id/rotation0Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="0°"
+            android:textSize="12sp"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <Button
+            android:id="@+id/rotation90Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="90°"
+            android:textSize="12sp"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <Button
+            android:id="@+id/rotation180Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="180°"
+            android:textSize="12sp"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <Button
+            android:id="@+id/rotation270Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="270°"
+            android:textSize="12sp"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -74,7 +144,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:layout_marginEnd="8dp"
+            android:layout_marginEnd="4dp"
             android:gravity="center">
 
             <TextView
@@ -95,6 +165,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
+            android:layout_marginStart="4dp"
             android:gravity="center">
 
             <TextView
@@ -109,6 +180,48 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
         </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="4dp"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="X 偏移"
+                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                android:layout_marginBottom="8dp" />
+
+            <NumberPicker
+                android:id="@+id/offsetXPicker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="4dp"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Y 偏移"
+                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                android:layout_marginBottom="8dp" />
+
+            <NumberPicker
+                android:id="@+id/offsetYPicker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
@@ -116,7 +229,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="当前系数: X=1.00000, Y=1.00000"
+        android:text="系数: X=1.00000, Y=1.00000\n偏移: X=0.0000, Y=0.0000"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
         android:fontFamily="monospace"
         android:background="#20000000"

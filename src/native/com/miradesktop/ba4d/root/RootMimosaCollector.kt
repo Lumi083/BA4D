@@ -321,17 +321,64 @@ class RootMimosaCollector(
 
         val rotated = applyDisplayRotation(normalized.first, normalized.second, screen.rotation)
 
-        // Load calibration scale factors
+        // Load calibration parameters
         val prefs = context.getSharedPreferences("calibration_config", Context.MODE_PRIVATE)
-        val scaleX = prefs.getFloat("scale_x", 1.0f)
-        val scaleY = prefs.getFloat("scale_y", 1.0f)
+        val rotationSpecific = prefs.getBoolean("rotation_specific", false)
 
-        // Apply calibration scale factors to correct coordinate mapping
-        val px = (rotated.first * realWidth * scaleX).roundToInt().coerceIn(0, realWidth - 1)
-        val py = (rotated.second * realHeight * scaleY).roundToInt().coerceIn(0, realHeight - 1)
+        val (scaleX, scaleY, offsetX, offsetY) = if (rotationSpecific) {
+            when (screen.rotation) {
+                Surface.ROTATION_0 -> {
+                    val sx = prefs.getFloat("scale_x_r0", 1.0f)
+                    val sy = prefs.getFloat("scale_y_r0", 1.0f)
+                    val ox = prefs.getFloat("offset_x_r0", 0.0f)
+                    val oy = prefs.getFloat("offset_y_r0", 0.0f)
+                    Tuple4(sx, sy, ox, oy)
+                }
+                Surface.ROTATION_90 -> {
+                    val sx = prefs.getFloat("scale_x_r90", 1.0f)
+                    val sy = prefs.getFloat("scale_y_r90", 1.0f)
+                    val ox = prefs.getFloat("offset_x_r90", 0.0f)
+                    val oy = prefs.getFloat("offset_y_r90", 0.0f)
+                    Tuple4(sx, sy, ox, oy)
+                }
+                Surface.ROTATION_180 -> {
+                    val sx = prefs.getFloat("scale_x_r180", 1.0f)
+                    val sy = prefs.getFloat("scale_y_r180", 1.0f)
+                    val ox = prefs.getFloat("offset_x_r180", 0.0f)
+                    val oy = prefs.getFloat("offset_y_r180", 0.0f)
+                    Tuple4(sx, sy, ox, oy)
+                }
+                Surface.ROTATION_270 -> {
+                    val sx = prefs.getFloat("scale_x_r270", 1.0f)
+                    val sy = prefs.getFloat("scale_y_r270", 1.0f)
+                    val ox = prefs.getFloat("offset_x_r270", 0.0f)
+                    val oy = prefs.getFloat("offset_y_r270", 0.0f)
+                    Tuple4(sx, sy, ox, oy)
+                }
+                else -> {
+                    val sx = prefs.getFloat("scale_x", 1.0f)
+                    val sy = prefs.getFloat("scale_y", 1.0f)
+                    val ox = prefs.getFloat("offset_x", 0.0f)
+                    val oy = prefs.getFloat("offset_y", 0.0f)
+                    Tuple4(sx, sy, ox, oy)
+                }
+            }
+        } else {
+            val sx = prefs.getFloat("scale_x", 1.0f)
+            val sy = prefs.getFloat("scale_y", 1.0f)
+            val ox = prefs.getFloat("offset_x", 0.0f)
+            val oy = prefs.getFloat("offset_y", 0.0f)
+            Tuple4(sx, sy, ox, oy)
+        }
+
+        // Convert to pixel coordinates with calibration scale and offset
+        val px = ((rotated.first + offsetX) * realWidth * scaleX).roundToInt().coerceIn(0, realWidth - 1)
+        val py = ((rotated.second + offsetY) * realHeight * scaleY).roundToInt().coerceIn(0, realHeight - 1)
 
         return Pair(px, py)
     }
+
+    private data class Tuple4(val v1: Float, val v2: Float, val v3: Float, val v4: Float)
 
     private fun applyDisplayRotation(nx: Double, ny: Double, rotation: Int): Pair<Double, Double> {
         return when (rotation) {
