@@ -127,14 +127,19 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
         state = { isDown: false, lastPos: null, trail: [] };
         this.pointerStates.set(pointerId, state);
       }
+      const p = { x, y };
       if (pressed && !state.isDown) {
-        state.lastPos = { x, y };
-        state.trail = []; // 清空旧轨迹，防止串线
+        state.lastPos = p;
+        state.trail = [{ ...p, life: 1 }]; // 从按下点开始记录，避免首段或尾段瞬间消失
         this.boom(x, y);
       }
 
       // 松手时标记状态但不立即删除轨迹，让动画继续播放
       if (!pressed && !this.alwaysTrail) {
+        if (state.lastPos && Math.hypot(p.x - state.lastPos.x, p.y - state.lastPos.y) > 0.1) {
+          state.trail.push({ ...p, life: 1 });
+          while (state.trail.length > Math.max(1, this.maxTrail)) state.trail.shift();
+        }
         state.isDown = false;
         state.lastPos = null;
         return;
@@ -142,7 +147,6 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
 
       // 只有按下时才追加新点
       if (pressed || this.alwaysTrail) {
-        const p = { x, y };
         if (!state.lastPos) state.lastPos = p;
         const pointerCount = this.pointerStates.size;
         const minDist = 2 * Math.max(1, pointerCount / 2);
