@@ -453,6 +453,20 @@
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/maxTrailPerPointerInputLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/max_trail_per_pointer_hint">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/maxTrailPerPointerInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="number" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/opacityMulInputLayout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

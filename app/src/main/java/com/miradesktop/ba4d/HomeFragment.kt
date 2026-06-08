@@ -152,6 +152,7 @@ class HomeFragment : Fragment() {
         binding.scaleInput.setText(c.scale.toString())
         binding.speedInput.setText(c.speed.toString())
         binding.maxTrailInput.setText(c.maxTrail.toString())
+        binding.maxTrailPerPointerInput.setText(c.maxTrailPerPointer.toString())
         binding.sparkRateInput.setText(c.sparkRate.toString())
         binding.opacityMulInput.setText(c.opacityMul.toString())
         binding.adaptiveColorSwitch.isChecked = c.adaptiveColor
@@ -276,6 +277,7 @@ class HomeFragment : Fragment() {
             supportedParams.scaleDefault?.let { binding.scaleInput.setText(it.toString()) } ?: binding.scaleInput.setText(defaults.scale.toString())
             supportedParams.speedDefault?.let { binding.speedInput.setText(it.toString()) } ?: binding.speedInput.setText(defaults.speed.toString())
             supportedParams.maxTrailDefault?.let { binding.maxTrailInput.setText(it.toString()) } ?: binding.maxTrailInput.setText(defaults.maxTrail.toString())
+            supportedParams.maxTrailPerPointerDefault?.let { binding.maxTrailPerPointerInput.setText(it.toString()) } ?: binding.maxTrailPerPointerInput.setText(defaults.maxTrailPerPointer.toString())
             supportedParams.sparkRateDefault?.let { binding.sparkRateInput.setText(it.toString()) } ?: binding.sparkRateInput.setText(defaults.sparkRate.toString())
             supportedParams.opacityMulDefault?.let { binding.opacityMulInput.setText(it.toString()) } ?: binding.opacityMulInput.setText(defaults.opacityMul.toString())
             supportedParams.fpsLimitDefault?.let { binding.fpsLimitInput.setText(it.toString()) } ?: binding.fpsLimitInput.setText(defaults.fpsLimit.toString())
@@ -338,6 +340,11 @@ class HomeFragment : Fragment() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
+        binding.maxTrailPerPointerInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) = autoSave()
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
         binding.sparkRateInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) = autoSave()
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -367,7 +374,8 @@ class HomeFragment : Fragment() {
             trailColor = binding.trailColorInput.text?.toString().orEmpty().ifBlank { d.trailColor },
             scale = readFloat(binding.scaleInput.text, d.scale, 0.5f, 3.0f),
             speed = readFloat(binding.speedInput.text, d.speed, 0.2f, 3.0f),
-            maxTrail = readInt(binding.maxTrailInput.text, d.maxTrail, 0, 64),
+            maxTrail = readInt(binding.maxTrailInput.text, d.maxTrail, 0, 999),
+            maxTrailPerPointer = readInt(binding.maxTrailPerPointerInput.text, d.maxTrailPerPointer, 0, 1000),
             sparkRate = readFloat(binding.sparkRateInput.text, d.sparkRate, 0f, 1f),
             alwaysTrail = d.alwaysTrail,
             adaptiveColor = binding.adaptiveColorSwitch.isChecked,
@@ -391,6 +399,7 @@ class HomeFragment : Fragment() {
         binding.colorInputLayout.visibility = if (supportedParams.color) View.VISIBLE else View.GONE
         binding.trailColorInputLayout.visibility = if (supportedParams.trailColor) View.VISIBLE else View.GONE
         binding.maxTrailInputLayout.visibility = if (supportedParams.maxTrail) View.VISIBLE else View.GONE
+        binding.maxTrailPerPointerInputLayout.visibility = if (supportedParams.maxTrailPerPointer) View.VISIBLE else View.GONE
         binding.sparkRateInputLayout.visibility = if (supportedParams.sparkRate) View.VISIBLE else View.GONE
         binding.opacityMulInputLayout.visibility = if (supportedParams.opacityMul) View.VISIBLE else View.GONE
         binding.fpsLimitInputLayout.visibility = if (supportedParams.fpsLimit) View.VISIBLE else View.GONE

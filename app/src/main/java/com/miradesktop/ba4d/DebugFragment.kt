@@ -90,8 +90,9 @@ FPS限制: ${config.fpsLimit}
 颜色: ${config.color}
 自适应颜色: ${if (config.adaptiveColor) "✓ 启用" else "✗ 禁用"}
 当前颜色: $currentColor
-缩放: ${config.scale} 
+缩放: ${config.scale}
 最大轨迹: ${config.maxTrail}
+单段最大轨迹像素: ${config.maxTrailPerPointer}px
 
 Assets 文件:
 $fileStatus

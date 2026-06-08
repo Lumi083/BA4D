@@ -340,6 +340,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             "scale" to config.scale,
             "speed" to config.speed,
             "maxTrail" to config.maxTrail,
+            "maxTrailPerPointer" to config.maxTrailPerPointer,
             "sparkRate" to config.sparkRate,
             "alwaysTrail" to config.alwaysTrail,
             "dpr" to config.dpr,

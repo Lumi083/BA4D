@@ -9,9 +9,11 @@ height: 9999
 opacity: 100
 pinned: true
 $rgba | color | {"zh":"主颜色", "en":"Main Color"} : rgba(87, 164, 255, 1)
+$rgba | trailColor | {"zh":"拖尾颜色", "en":"Trail Color"} : rgba(255, 255, 255, 1)
 $num | scale | {"zh":"UI缩放", "en":"Scale"} | (0.5~3.0, step=0.1) : 1.5
 $num | speed | {"zh":"速度", "en":"Speed"} | (0.2~3.0, step=0.1) : 1.0
-$num | maxTrail | {"zh":"拖尾长度", "en":"Max Trail"} | (4~32, log) : 12
+$num | maxTrail | {"zh":"拖尾长度", "en":"Max Trail"} | (0~999, log) : 12
+$num | maxTrailPerPointer | {"zh":"单段拖尾像素长度", "en":"Max Trail Length (px)"} | (0~1000, log) : 300
 $num | sparkRate | {"zh":"拖尾粒子概率", "en":"Trail Spark Rate"} | (0~1.0, step=0.01) : 0
 $num | opacityMul | {"zh":"透明度乘数", "en":"Opacity"} | (0.0~1.0, step=0.05) : 1.0
 $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
@@ -34,7 +36,8 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
 (function() {
   const cfg = {
     port: 48291, color: 'rgba(87, 164, 255, 1)', trailColor: null, baseColor: null, scale: 1.5, opacityMul: 1.0,
-    speed: 1.0, maxTrail: 12, sparkRate: 0, alwaysTrail: false, dpr: 0, fpsLimit: 60
+    speed: 1.0, maxTrail: 12, maxTrailPerPointer: 300, sparkRate: 0, alwaysTrail: false, dpr: 0, fpsLimit: 60,
+    adaptiveColor: false
   };
   let displayOrigin = { x: window.screenX || 0, y: window.screenY || 0 };
 
@@ -109,7 +112,8 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
       this.scale = clamp(Number(cfg.scale) || 1.5, 0.5, 3.0);
       this.opacityMul = clamp(Number(cfg.opacityMul) || 1.0, 0.1, 1.0);
       this.speed = clamp(Number(cfg.speed) || 1.0, 0.2, 3.0);
-      this.maxTrail = clamp(Math.trunc(Number(cfg.maxTrail) || 12), 4, 32);
+      this.maxTrail = clamp(Math.trunc(Number(cfg.maxTrail) || 12), 0, 999);
+      this.maxTrailPerPointer = clamp(Math.trunc(Number(cfg.maxTrailPerPointer) || 300), 0, 1000);
       let sr = Number(cfg.sparkRate);
       this.sparkRate = Number.isFinite(sr) ? clamp(sr, 0, 1) : 0;
       this.alwaysTrail = Boolean(cfg.alwaysTrail);
@@ -142,11 +146,22 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
         if (!state.lastPos) state.lastPos = p;
         const pointerCount = this.pointerStates.size;
         const minDist = 2 * Math.max(1, pointerCount / 2);
-        const maxLen = Math.max(4, Math.floor(this.maxTrail / Math.max(1, pointerCount / 2)));
+        const maxLen = Math.max(0, Math.floor(this.maxTrail / Math.max(1, pointerCount / 2)));
 
         if (Math.hypot(p.x - state.lastPos.x, p.y - state.lastPos.y) > minDist) {
           state.trail.push({ x: p.x, y: p.y, life: 1 });
           while (state.trail.length > maxLen) state.trail.shift();
+
+          // 限制单段拖尾的像素总长度
+          let totalLength = 0;
+          for (let i = state.trail.length - 1; i > 0; i--) {
+            totalLength += Math.hypot(state.trail[i].x - state.trail[i-1].x, state.trail[i].y - state.trail[i-1].y);
+            if (totalLength > this.maxTrailPerPointer) {
+              state.trail.splice(0, i);
+              break;
+            }
+          }
+
           state.lastPos = p;
 
           if (Math.random() < this.sparkRate) {
@@ -188,7 +203,19 @@ $num | fpsLimit | {"zh":"帧率限制","en":"FPS Limit"} | (15~240, log) : 60
         ctx.lineTo(cx + Math.cos(ang) * rInner, cy + Math.sin(ang) * rInner);
       }
       ctx.closePath();
-      ctx.fillStyle = `rgba(255,255,255,${clamp(alpha * this.opacityMul, 0, 1)})`;
+      // 自适应颜色关闭时外圈使用纯白色，开启时使用 45% 拖尾颜色 + 55% 白色混合
+      let ringColorStr;
+      if (cfg.adaptiveColor) {
+        const trailC = this.trailColor || '255,255,255';
+        const trailParts = trailC.split(',').map(v => parseFloat(v));
+        const blendedR = Math.round(trailParts[0] * 0.45 + 255 * 0.55);
+        const blendedG = Math.round(trailParts[1] * 0.45 + 255 * 0.55);
+        const blendedB = Math.round(trailParts[2] * 0.45 + 255 * 0.55);
+        ringColorStr = `${blendedR},${blendedG},${blendedB}`;
+      } else {
+        ringColorStr = '255,255,255';
+      }
+      ctx.fillStyle = `rgba(${ringColorStr},${clamp(alpha * this.opacityMul, 0, 1)})`;
       ctx.fill();
     }
 

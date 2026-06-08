@@ -16,6 +16,7 @@ object HtmlParameterParser {
         val scale: Boolean = false,
         val speed: Boolean = false,
         val maxTrail: Boolean = false,
+        val maxTrailPerPointer: Boolean = false,
         val sparkRate: Boolean = false,
         val opacityMul: Boolean = false,
         val fpsLimit: Boolean = false,
@@ -26,6 +27,7 @@ object HtmlParameterParser {
         val scaleDefault: Float? = null,
         val speedDefault: Float? = null,
         val maxTrailDefault: Int? = null,
+        val maxTrailPerPointerDefault: Int? = null,
         val sparkRateDefault: Float? = null,
         val opacityMulDefault: Float? = null,
         val fpsLimitDefault: Int? = null
@@ -82,6 +84,7 @@ object HtmlParameterParser {
             scale = params.contains("scale"),
             speed = params.contains("speed"),
             maxTrail = params.contains("maxTrail"),
+            maxTrailPerPointer = params.contains("maxTrailPerPointer"),
             sparkRate = params.contains("sparkRate"),
             opacityMul = params.contains("opacityMul"),
             fpsLimit = params.contains("fpsLimit"),
@@ -91,6 +94,7 @@ object HtmlParameterParser {
             scaleDefault = defaults["scale"]?.toFloatOrNull(),
             speedDefault = defaults["speed"]?.toFloatOrNull(),
             maxTrailDefault = defaults["maxTrail"]?.toIntOrNull(),
+            maxTrailPerPointerDefault = defaults["maxTrailPerPointer"]?.toIntOrNull(),
             sparkRateDefault = defaults["sparkRate"]?.toFloatOrNull(),
             opacityMulDefault = defaults["opacityMul"]?.toFloatOrNull(),
             fpsLimitDefault = defaults["fpsLimit"]?.toIntOrNull()

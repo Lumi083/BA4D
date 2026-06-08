@@ -261,11 +261,13 @@ class OverlayService : Service() {
             "scale" to config.scale,
             "speed" to config.speed,
             "maxTrail" to config.maxTrail,
+            "maxTrailPerPointer" to config.maxTrailPerPointer,
             "sparkRate" to config.sparkRate,
             "alwaysTrail" to config.alwaysTrail,
             "dpr" to config.dpr,
             "opacityMul" to config.opacityMul,
-            "port" to config.port
+            "port" to config.port,
+            "adaptiveColor" to config.adaptiveColor
         )
         miraAdapter?.sendConfig(configMap)
     }

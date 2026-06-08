@@ -34,6 +34,7 @@
     <string name="scale_hint">大小（1.0-3.0）</string>
     <string name="speed_hint">速度（1.0）</string>
     <string name="max_trail_hint">拖尾长度（32）</string>
+    <string name="max_trail_per_pointer_hint">单段拖尾像素长度（300px）</string>
     <string name="spark_rate_hint">拖尾粒子概率（0.1）</string>
     <string name="always_trail_label">常驻拖尾</string>
     <string name="dpr_hint">偏移补偿（DPR%）</string>
