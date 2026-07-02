@@ -13,9 +13,10 @@
         android:layout_marginBottom="16dp" />
 
     <TextView
+        android:id="@+id/instructionTextView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="说明：\n1. 先在主页启动悬浮窗\n2. 使用数字滚轮调整 X 和 Y 缩放系数和偏移量。\n动画偏右：调小 X 系数。动画偏下：调小 Y 系数。\n动画偏左：调大 X 系数。动画偏上：调大 Y 系数。\n偏移量用于微调坐标位置（-1000% 到 1000%）。\n3. 在页面底部点击测试。\n4. 自动保存，退出即可。"
+        android:text="说明：\n1. 先在主页启动悬浮窗。\n2. 使用数字滚轮调整 X 和 Y 缩放系数和偏移量。\n动画偏右：调小 X 系数。动画偏下：调小 Y 系数。\n动画偏左：调大 X 系数。动画偏上：调大 Y 系数。\n偏移量用于微调坐标位置（-1000% 到 1000%）。\n3. 在页面底部点击测试。\n4. 自动保存，退出即可。\n横屏无法正确校准时，请考虑从主页禁用横屏动画。"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
         android:lineSpacingMultiplier="1.2"
         android:layout_marginBottom="16dp" />
@@ -30,7 +31,7 @@
             android:id="@+id/rotationSpecificCheckbox"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="为旋转后的屏幕单独设置校准"
+            android:text="为旋转后的屏幕分别设置校准"
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
     </LinearLayout>
 

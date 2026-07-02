@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -58,6 +59,7 @@ class OverlayService : Service() {
     private var isDirectCapture = false
     private var isBA4DInForeground = false
     private var isAppStateReceiverRegistered = false
+    private var isAnimationHiddenForOrientation = false
 
     private val appStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -147,6 +149,11 @@ class OverlayService : Service() {
         screenSampler = null
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateAnimationVisibilityForOrientation()
+    }
+
     private fun createOverlay(inputUrl: String?, config: BASparkConfig) {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -213,6 +220,7 @@ class OverlayService : Service() {
         try {
             windowManager?.addView(overlayWebView, params)
             webView = overlayWebView
+            updateAnimationVisibilityForOrientation()
         } catch (e: RuntimeException) {
             android.util.Log.e("OverlayService", "Failed to add overlay window", e)
             overlayWebView.destroy()
@@ -334,8 +342,7 @@ class OverlayService : Service() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
-                handleAdaptiveColor(x, y)
+                sendPointerIfVisible(pointerId, x, y, pressed)
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
@@ -350,8 +357,7 @@ class OverlayService : Service() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
-                handleAdaptiveColor(x, y)
+                sendPointerIfVisible(pointerId, x, y, pressed)
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
@@ -366,8 +372,7 @@ class OverlayService : Service() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
-                handleAdaptiveColor(x, y)
+                sendPointerIfVisible(pointerId, x, y, pressed)
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
@@ -377,6 +382,30 @@ class OverlayService : Service() {
         if (collector.start()) {
             directCollector = collector
         }
+    }
+
+    private fun sendPointerIfVisible(pointerId: Int, x: Int, y: Int, pressed: Boolean) {
+        if (updateAnimationVisibilityForOrientation()) {
+            return
+        }
+
+        miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
+        handleAdaptiveColor(x, y)
+    }
+
+    private fun updateAnimationVisibilityForOrientation(): Boolean {
+        val shouldHide = shouldHideAnimationInLandscape()
+        if (shouldHide != isAnimationHiddenForOrientation) {
+            isAnimationHiddenForOrientation = shouldHide
+            webView?.post { webView?.visibility = if (shouldHide) View.INVISIBLE else View.VISIBLE }
+        }
+        return shouldHide
+    }
+
+    private fun shouldHideAnimationInLandscape(): Boolean {
+        val hideInLandscape = getSharedPreferences("app_prefs", MODE_PRIVATE)
+            .getBoolean("hide_animation_landscape", false)
+        return hideInLandscape && resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     }
 
     private fun handleAdaptiveColor(x: Int, y: Int) {

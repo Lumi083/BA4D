@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -58,6 +59,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     private var isAppStateReceiverRegistered = false
     private var isServiceConnected = false
     private var pendingStartIntent: Intent? = null
+    private var isAnimationHiddenForOrientation = false
 
     private val appStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -197,6 +199,11 @@ class OverlayAccessibilityService : AccessibilityService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateAnimationVisibilityForOrientation()
+    }
+
     private fun startForegroundForMediaProjection() {
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
@@ -292,6 +299,7 @@ class OverlayAccessibilityService : AccessibilityService() {
         try {
             windowManager?.addView(overlayWebView, params)
             webView = overlayWebView
+            updateAnimationVisibilityForOrientation()
         } catch (e: RuntimeException) {
             android.util.Log.e("OverlayAccessibilityService", "Failed to add accessibility overlay window", e)
             overlayWebView.destroy()
@@ -412,8 +420,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
-                handleAdaptiveColor(x, y)
+                sendPointerIfVisible(pointerId, x, y, pressed)
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
@@ -428,8 +435,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
-                handleAdaptiveColor(x, y)
+                sendPointerIfVisible(pointerId, x, y, pressed)
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
@@ -444,8 +450,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             context = this,
             fpsLimit = config?.fpsLimit ?: 60,
             onPointer = { pointerId, x, y, pressed ->
-                miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
-                handleAdaptiveColor(x, y)
+                sendPointerIfVisible(pointerId, x, y, pressed)
             },
             onBackgroundLog = { eventName, detail, x, y ->
                 // Background logging disabled (no WebSocket server)
@@ -455,6 +460,30 @@ class OverlayAccessibilityService : AccessibilityService() {
         if (collector.start()) {
             directCollector = collector
         }
+    }
+
+    private fun sendPointerIfVisible(pointerId: Int, x: Int, y: Int, pressed: Boolean) {
+        if (updateAnimationVisibilityForOrientation()) {
+            return
+        }
+
+        miraAdapter?.sendTouchInput(pointerId = pointerId, x = x, y = y, pressed = pressed)
+        handleAdaptiveColor(x, y)
+    }
+
+    private fun updateAnimationVisibilityForOrientation(): Boolean {
+        val shouldHide = shouldHideAnimationInLandscape()
+        if (shouldHide != isAnimationHiddenForOrientation) {
+            isAnimationHiddenForOrientation = shouldHide
+            webView?.post { webView?.visibility = if (shouldHide) View.INVISIBLE else View.VISIBLE }
+        }
+        return shouldHide
+    }
+
+    private fun shouldHideAnimationInLandscape(): Boolean {
+        val hideInLandscape = getSharedPreferences("app_prefs", MODE_PRIVATE)
+            .getBoolean("hide_animation_landscape", false)
+        return hideInLandscape && resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     }
 
     private fun handleAdaptiveColor(x: Int, y: Int) {

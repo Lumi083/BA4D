@@ -29,6 +29,7 @@ class HomeFragment : Fragment() {
     companion object {
         private const val PREFS_NAME = "app_prefs"
         private const val KEY_MIMOSA_DATA_SOURCE = "mimosa_data_source"
+        private const val KEY_HIDE_ANIMATION_LANDSCAPE = "hide_animation_landscape"
         private const val SOURCE_SHIZUKU = "shizuku"
         private const val SOURCE_ROOT = "root"
         private const val SOURCE_DIRECT_DEPRECATED = "direct"
@@ -71,6 +72,7 @@ class HomeFragment : Fragment() {
         setupListeners()
         loadMimosaDataSource()
         loadHideFromRecentsPreference()
+        loadHideAnimationInLandscapePreference()
         updateParameterVisibility()
     }
 
@@ -309,6 +311,10 @@ class HomeFragment : Fragment() {
             applyHideFromRecents(isChecked)
         }
 
+        binding.hideAnimationInLandscapeSwitch.setOnCheckedChangeListener { _, isChecked ->
+            saveHideAnimationInLandscapePreference(isChecked)
+        }
+
         val autoSave = { saveConfig() }
         binding.fpsLimitInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) = autoSave()
@@ -533,5 +539,15 @@ class HomeFragment : Fragment() {
             android.util.Log.e("HomeFragment", "Failed to set excludeFromRecents", e)
             Toast.makeText(requireContext(), "设置失败", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun loadHideAnimationInLandscapePreference() {
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        binding.hideAnimationInLandscapeSwitch.isChecked = prefs.getBoolean(KEY_HIDE_ANIMATION_LANDSCAPE, false)
+    }
+
+    private fun saveHideAnimationInLandscapePreference(hide: Boolean) {
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_HIDE_ANIMATION_LANDSCAPE, hide).apply()
     }
 }

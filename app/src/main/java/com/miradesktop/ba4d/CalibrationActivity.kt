@@ -1,7 +1,9 @@
 package com.miradesktop.ba4d
 
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.miradesktop.ba4d.databinding.ActivityCalibrationBinding
@@ -66,6 +68,7 @@ class CalibrationActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "坐标校准"
 
+        updateInstructionVisibility()
         setupRotationSpecificCheckbox()
         setupRotationButtons()
         setupPrecisionButtons()
@@ -77,6 +80,11 @@ class CalibrationActivity : AppCompatActivity() {
         binding.calibrationCanvas.onTouchCallback = { x, y ->
             updateInfo("触摸: ($x, $y)")
         }
+    }
+
+    private fun updateInstructionVisibility() {
+        binding.instructionTextView.visibility =
+            if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) View.GONE else View.VISIBLE
     }
 
     private fun setupRotationSpecificCheckbox() {

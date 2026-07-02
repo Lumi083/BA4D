@@ -4,7 +4,7 @@ Version: {VERSION}, Release Date: {DATE}.
 
 ## 最近的新功能
 
-- **隐藏后台**：在权限设置卡片中新增"隐藏后台"开关，开启后应用将在最近任务列表中隐藏，避免被清理时终止。
+- **横屏下关闭动画**：在权限设置卡片中新增"横屏时隐藏"开关，开启后横屏模式将自动隐藏悬浮窗。
 
 更多情报请从仓库主页了解。喜欢的话请点个star！
 For more information, visit the project repository.
