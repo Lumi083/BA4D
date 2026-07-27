@@ -140,6 +140,24 @@ class ShizukuMimosaCollector(
         scope = null
     }
 
+    @Synchronized
+    fun clearPendingInput() {
+        stateByDevice.values.forEach { device ->
+            device.slots.values.forEach { slot ->
+                slot.pressed = false
+                slot.dirty = false
+                slot.x = -1
+                slot.y = -1
+                slot.lastEmittedX = -1
+                slot.lastEmittedY = -1
+                slot.lastEmittedPressed = false
+            }
+        }
+        preferredDevicePath = null
+        lastEmitMs = 0L
+    }
+
+    @Synchronized
     private fun parseLine(line: String) {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return

@@ -11,8 +11,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.miradesktop.ba4d.databinding.FragmentAboutBinding
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,7 +32,7 @@ class AboutFragment : Fragment() {
         binding.checkUpdateButton.setOnClickListener {
             binding.updateInfoTextView.text = "检查更新中..."
             binding.downloadUpdateButton.visibility = View.GONE
-            CoroutineScope(Dispatchers.Main).launch {
+            viewLifecycleOwner.lifecycleScope.launch {
                 val current = requireContext().assets.open("version.txt").bufferedReader().use { it.readText().trim() }
                 val result = withContext(Dispatchers.IO) {
                     try {
@@ -52,6 +52,7 @@ class AboutFragment : Fragment() {
                     catch (e: java.net.SocketTimeoutException) { "网络错误: 连接超时" }
                     catch (e: Exception) { "检查失败: ${e.javaClass.simpleName}" }
                 }
+                if (!isAdded || _binding == null) return@launch
                 if (result.startsWith("ok:")) {
                     val latest = result.removePrefix("ok:")
                     val hasUpdate = current != latest.removePrefix("v")

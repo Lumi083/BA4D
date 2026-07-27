@@ -3,6 +3,7 @@ package com.miradesktop.ba4d.direct
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -32,6 +33,12 @@ class DirectMimosaCollector(
 
     fun start(): Boolean {
         if (!active.compareAndSet(false, true)) return true
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+            android.util.Log.w("DirectMimosaCollector", "Overlay permission is not granted")
+            active.set(false)
+            return false
+        }
 
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -92,6 +99,12 @@ class DirectMimosaCollector(
         activePointers.clear()
     }
 
+    @Synchronized
+    fun clearPendingInput() {
+        activePointers.clear()
+        lastEmitMs = 0L
+    }
+
     fun setTouchable(touchable: Boolean): Boolean {
         val view = overlayView ?: run {
             android.util.Log.w("DirectMimosaCollector", "setTouchable: overlayView is null")
@@ -131,6 +144,7 @@ class DirectMimosaCollector(
         }
     }
 
+    @Synchronized
     private fun handleTouchEvent(event: MotionEvent) {
         val now = System.currentTimeMillis()
         if (now - lastEmitMs < minEmitIntervalMs) return

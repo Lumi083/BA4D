@@ -15,6 +15,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.PowerManager
 import android.os.IBinder
 import android.util.TypedValue
 import android.view.Gravity
@@ -60,6 +61,8 @@ class OverlayService : Service() {
     private var isBA4DInForeground = false
     private var isAppStateReceiverRegistered = false
     private var isAnimationHiddenForOrientation = false
+    @Volatile private var isScreenInteractive = true
+    private var isScreenStateReceiverRegistered = false
 
     private val appStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -84,11 +87,27 @@ class OverlayService : Service() {
         }
     }
 
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    isScreenInteractive = false
+                    shizukuCollector?.clearPendingInput()
+                    rootCollector?.clearPendingInput()
+                    directCollector?.clearPendingInput()
+                }
+                Intent.ACTION_SCREEN_ON -> isScreenInteractive = true
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        registerScreenStateReceiver()
         ensureNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        runCatching { startForeground(NOTIFICATION_ID, buildNotification()) }
+            .onFailure { android.util.Log.e("OverlayService", "Failed to start foreground service", it) }
 
         config = loadBasparkConfig()
 
@@ -105,11 +124,12 @@ class OverlayService : Service() {
         startInputCollectorIfPossible()
 
         if (config!!.adaptiveColor) {
-            startForegroundForMediaProjection()
+            runCatching { startForegroundForMediaProjection() }
+                .onFailure { android.util.Log.e("OverlayService", "Failed to start media projection foreground service", it) }
             val resultCode = intent?.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1) ?: -1
             val data = intent?.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
             android.util.Log.d("OverlayService", "adaptiveColor check: resultCode=$resultCode, data=$data, resultCode!=-1=${resultCode != -1}, data!=null=${data != null}")
-            if (data != null) {
+            if (resultCode == android.app.Activity.RESULT_OK && data != null) {
                 val metrics = resources.displayMetrics
                 val sampler = ScreenSampler(this)
                 if (runCatching { sampler.start(resultCode, data, metrics.widthPixels, metrics.heightPixels) }.isSuccess) {
@@ -137,6 +157,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterScreenStateReceiver()
         unregisterAppStateReceiverIfNeeded()
         removeOverlay()
         shizukuCollector?.stop()
@@ -259,6 +280,24 @@ class OverlayService : Service() {
 
         runCatching { unregisterReceiver(appStateReceiver) }
         isAppStateReceiverRegistered = false
+    }
+
+    private fun registerScreenStateReceiver() {
+        if (isScreenStateReceiverRegistered) return
+        isScreenInteractive = (getSystemService(PowerManager::class.java)?.isInteractive != false)
+        runCatching {
+            registerReceiver(screenStateReceiver, IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            })
+            isScreenStateReceiverRegistered = true
+        }
+    }
+
+    private fun unregisterScreenStateReceiver() {
+        if (!isScreenStateReceiverRegistered) return
+        runCatching { unregisterReceiver(screenStateReceiver) }
+        isScreenStateReceiverRegistered = false
     }
 
     private fun pushConfigViaMira(config: BASparkConfig) {
@@ -385,6 +424,7 @@ class OverlayService : Service() {
     }
 
     private fun sendPointerIfVisible(pointerId: Int, x: Int, y: Int, pressed: Boolean) {
+        if (!isScreenInteractive) return
         if (updateAnimationVisibilityForOrientation()) {
             return
         }

@@ -15,6 +15,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.PowerManager
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -58,6 +59,8 @@ class OverlayAccessibilityService : AccessibilityService() {
     private var isBA4DInForeground = false
     private var isAppStateReceiverRegistered = false
     private var isServiceConnected = false
+    @Volatile private var isScreenInteractive = true
+    private var isScreenStateReceiverRegistered = false
     private var pendingStartIntent: Intent? = null
     private var isAnimationHiddenForOrientation = false
 
@@ -84,6 +87,20 @@ class OverlayAccessibilityService : AccessibilityService() {
         }
     }
 
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    isScreenInteractive = false
+                    shizukuCollector?.clearPendingInput()
+                    rootCollector?.clearPendingInput()
+                    directCollector?.clearPendingInput()
+                }
+                Intent.ACTION_SCREEN_ON -> isScreenInteractive = true
+            }
+        }
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // No need to handle accessibility events for overlay rendering
     }
@@ -99,6 +116,24 @@ class OverlayAccessibilityService : AccessibilityService() {
             pendingStartIntent = null
             handleStartOverlay(pending)
         }
+    }
+
+    private fun registerScreenStateReceiver() {
+        if (isScreenStateReceiverRegistered) return
+        isScreenInteractive = (getSystemService(PowerManager::class.java)?.isInteractive != false)
+        runCatching {
+            registerReceiver(screenStateReceiver, IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            })
+            isScreenStateReceiverRegistered = true
+        }
+    }
+
+    private fun unregisterScreenStateReceiver() {
+        if (!isScreenStateReceiverRegistered) return
+        runCatching { unregisterReceiver(screenStateReceiver) }
+        isScreenStateReceiverRegistered = false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -119,6 +154,7 @@ class OverlayAccessibilityService : AccessibilityService() {
             ACTION_STOP_OVERLAY -> {
                 pendingStartIntent = null
                 unregisterAppStateReceiverIfNeeded()
+                unregisterScreenStateReceiver()
                 removeOverlay()
                 shizukuCollector?.stop()
                 shizukuCollector = null
@@ -135,6 +171,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     }
 
     private fun handleStartOverlay(intent: Intent) {
+        registerScreenStateReceiver()
         config = loadBasparkConfig()
 
         val source = getMimosaDataSource()
@@ -146,14 +183,15 @@ class OverlayAccessibilityService : AccessibilityService() {
             unregisterAppStateReceiverIfNeeded()
         }
 
-        startForegroundForMediaProjection()
+        runCatching { startForegroundForMediaProjection() }
+            .onFailure { android.util.Log.e("OverlayAccessibilityService", "Failed to start foreground service", it) }
         startInputCollectorIfPossible()
 
         if (config!!.adaptiveColor) {
             val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, -1)
             val data = intent.getParcelableExtra<Intent>(EXTRA_PROJECTION_DATA)
             android.util.Log.d("OverlayAccessibilityService", "adaptiveColor check: resultCode=$resultCode, data=$data")
-            if (data != null) {
+            if (resultCode == android.app.Activity.RESULT_OK && data != null) {
                 val metrics = resources.displayMetrics
                 val sampler = ScreenSampler(this)
                 if (runCatching { sampler.start(resultCode, data, metrics.widthPixels, metrics.heightPixels) }.isSuccess) {
@@ -186,6 +224,7 @@ class OverlayAccessibilityService : AccessibilityService() {
         isServiceConnected = false
         pendingStartIntent = null
         unregisterAppStateReceiverIfNeeded()
+        unregisterScreenStateReceiver()
         removeOverlay()
         shizukuCollector?.stop()
         shizukuCollector = null
@@ -463,6 +502,7 @@ class OverlayAccessibilityService : AccessibilityService() {
     }
 
     private fun sendPointerIfVisible(pointerId: Int, x: Int, y: Int, pressed: Boolean) {
+        if (!isScreenInteractive) return
         if (updateAnimationVisibilityForOrientation()) {
             return
         }
