@@ -830,6 +830,28 @@ void main()
       config.trailTimeScale = Number(cfg.speed);
     }
     if (Number.isFinite(Number(cfg.maxDpr))) config.maxDpr = Number(cfg.maxDpr);
+    // Apply adaptive alpha to the completed host layer, not to the library's
+    // color, Bloom, Coverage, or render configuration.
+    if (cfg.adaptiveColor) {
+      const luminance = (Number(cfg.adaptiveBackgroundLuminance)-0.5)*2;
+      const baseOpacity = Math.max(0, Math.min(1, Number(cfg.opacityMul) || 1));
+      const adaptiveOpacity = Number.isFinite(luminance)
+        ? Math.max(0, Math.min(1, 1 - luminance * 0.2))
+        : 1;
+      const fxHost = document.getElementById('fxHost');
+      fxHost.style.opacity = String(baseOpacity * adaptiveOpacity);
+      // One final multiplicative operation; do not depend on SVG filters.
+      const brightness = Number.isFinite(luminance)
+        ? 1 + Math.max(0, Math.min(1, luminance)) * 1
+        : 1;
+      fxHost.style.filter = `brightness(${brightness})`;
+    } else {
+      const fxHost = document.getElementById('fxHost');
+      fxHost.style.opacity = String(
+        Math.max(0, Math.min(1, Number(cfg.opacityMul) || 1)),
+      );
+      fxHost.style.filter = '';
+    }
     effect.updateConfig(config);
     if (cfg.color !== undefined) effect.setThemeColor(String(cfg.color));
   }

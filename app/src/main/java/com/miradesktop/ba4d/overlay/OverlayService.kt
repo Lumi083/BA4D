@@ -56,7 +56,7 @@ class OverlayService : Service() {
     private var currentR = 0f
     private var currentG = 0f
     private var currentB = 0f
-    private var targetColor = ""
+    private var targetAdaptiveState = ""
     private var isDirectCapture = false
     private var isBA4DInForeground = false
     private var isAppStateReceiverRegistered = false
@@ -450,46 +450,37 @@ class OverlayService : Service() {
 
     private fun handleAdaptiveColor(x: Int, y: Int) {
         if (config?.adaptiveColor == true && screenSampler != null) {
-            val samples = listOf(
-                screenSampler?.sampleAt(x, y),
-                screenSampler?.sampleAt(x - 50, y - 50),
-                screenSampler?.sampleAt(x + 50, y - 50),
-                screenSampler?.sampleAt(x - 50, y + 50),
-                screenSampler?.sampleAt(x + 50, y + 50)
-            ).filterNotNull()
+            val sample = screenSampler?.sampleAverageAt(
+                listOf(
+                    x to y,
+                    x - 50 to y - 50,
+                    x + 50 to y - 50,
+                    x - 50 to y + 50,
+                    x + 50 to y + 50
+                )
+            )
 
-            if (samples.isNotEmpty()) {
-                val avgR = samples.map { it.first }.average().toFloat()
-                val avgG = samples.map { it.second }.average().toFloat()
-                val avgB = samples.map { it.third }.average().toFloat()
+            if (sample != null) {
+                val (avgR, avgG, avgB) = sample
 
                 currentR = currentR * 0.7f + avgR * 0.3f
                 currentG = currentG * 0.7f + avgG * 0.3f
                 currentB = currentB * 0.7f + avgB * 0.3f
 
-                val baseColor = config?.color ?: "rgba(87, 164, 255, 1)"
-                val initialTrailColor = config?.trailColor ?: "rgba(0, 200, 255, 1)"
-
-                val trailColorMatch = Regex("rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)").find(initialTrailColor)
-                val (r, g, b) = if (trailColorMatch != null) {
-                    Triple(trailColorMatch.groupValues[1].toInt(), trailColorMatch.groupValues[2].toInt(), trailColorMatch.groupValues[3].toInt())
-                } else {
-                    Triple(0, 200, 255)
-                }
-
-                fun hardLight(blend: Float, base: Float): Float {
-                    return max(max(1f - 2f * (1f - base) * (1f - blend), base), blend) + base * 0.15f
-                }
-
-                val newR = (hardLight(currentR, r / 255f) * 255).toInt().coerceIn(0, 255)
-                val newG = (hardLight(currentG, g / 255f) * 255).toInt().coerceIn(0, 255)
-                val newB = (hardLight(currentB, b / 255f) * 255).toInt().coerceIn(0, 255)
-                val trailColor = "rgba($newR, $newG, $newB, 1)"
-
-                if (trailColor != targetColor) {
-                    targetColor = trailColor
-                    miraAdapter?.sendConfig(mapOf("color" to baseColor, "trailColor" to trailColor))
-                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit().putString("current_adaptive_color", trailColor).apply()
+                val luminance = (0.2126f * currentR + 0.7152f * currentG + 0.0722f * currentB)
+                    .coerceIn(0f, 1f)
+                val state = (luminance * 100).toInt().toString()
+                if (state != targetAdaptiveState) {
+                    targetAdaptiveState = state
+                    miraAdapter?.sendConfig(
+                        mapOf(
+                            "adaptiveColor" to true,
+                            "adaptiveBackgroundLuminance" to luminance
+                        )
+                    )
+                    getSharedPreferences(BASparkConfig.PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString("current_adaptive_color", "背景亮度=${"%.2f".format(luminance)}")
+                        .apply()
                 }
             }
         }

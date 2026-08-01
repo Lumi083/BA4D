@@ -13,7 +13,6 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.Looper
-import kotlin.math.roundToInt
 
 class ScreenSampler(private val context: Context) {
     private var mediaProjection: MediaProjection? = null
@@ -35,8 +34,13 @@ class ScreenSampler(private val context: Context) {
     }
 
     fun sampleAt(x: Int, y: Int, radius: Int = 5): Triple<Float, Float, Float>? {
+        return sampleAverageAt(listOf(x to y), radius)
+    }
+
+    fun sampleAverageAt(points: List<Pair<Int, Int>>, radius: Int = 5): Triple<Float, Float, Float>? {
         val image = imageReader?.acquireLatestImage() ?: return null
         try {
+            if (points.isEmpty()) return null
             val plane = image.planes[0]
             val buffer = plane.buffer
             val pixelStride = plane.pixelStride
@@ -47,20 +51,22 @@ class ScreenSampler(private val context: Context) {
             var totalB = 0f
             var count = 0
 
-            for (dy in -radius..radius) {
-                for (dx in -radius..radius) {
-                    val px = (x + dx).coerceIn(0, image.width - 1)
-                    val py = (y + dy).coerceIn(0, image.height - 1)
-                    val offset = py * rowStride + px * pixelStride
+            for ((x, y) in points) {
+                for (dy in -radius..radius) {
+                    for (dx in -radius..radius) {
+                        val px = (x + dx).coerceIn(0, image.width - 1)
+                        val py = (y + dy).coerceIn(0, image.height - 1)
+                        val offset = py * rowStride + px * pixelStride
 
-                    val r = (buffer[offset].toInt() and 0xFF) / 255f
-                    val g = (buffer[offset + 1].toInt() and 0xFF) / 255f
-                    val b = (buffer[offset + 2].toInt() and 0xFF) / 255f
+                        val r = (buffer[offset].toInt() and 0xFF) / 255f
+                        val g = (buffer[offset + 1].toInt() and 0xFF) / 255f
+                        val b = (buffer[offset + 2].toInt() and 0xFF) / 255f
 
-                    totalR += r
-                    totalG += g
-                    totalB += b
-                    count++
+                        totalR += r
+                        totalG += g
+                        totalB += b
+                        count++
+                    }
                 }
             }
 
