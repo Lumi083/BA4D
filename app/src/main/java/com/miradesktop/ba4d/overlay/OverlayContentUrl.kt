@@ -14,7 +14,7 @@ object OverlayContentUrl {
     private const val FILES_PREFIX = "/files/"
 
     fun fromStartupFile(context: Context, startupFile: String?): String {
-        val fileName = startupFile ?: "ba-spark-lite.mira.html"
+        val fileName = startupFile ?: "ba-click-fx.mira.html"
         val userFile = File(context.filesDir, fileName)
         return if (userFile.exists()) {
             "$SCHEME://$HOST$FILES_PREFIX${Uri.encode(fileName)}"
@@ -23,7 +23,7 @@ object OverlayContentUrl {
         }
     }
 
-    fun defaultOverlayUrl(): String = "$SCHEME://$HOST$ASSET_PREFIX" + "ba-spark-lite.mira.html"
+    fun defaultOverlayUrl(): String = "$SCHEME://$HOST$ASSET_PREFIX" + "ba-click-fx.mira.html"
 
     fun shouldIntercept(context: Context, request: WebResourceRequest): WebResourceResponse? {
         val uri = request.url

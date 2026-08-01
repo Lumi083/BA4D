@@ -8,7 +8,6 @@ width: 9999
 height: 9999
 opacity: 100
 pinned: true
-$rgba | color | {"zh":"主题颜色", "en":"Theme Color"} : #4ca7ff
 $num | scale | {"zh":"全局缩放", "en":"Scale"} | (0.01~5, step=0.01) : 1
 $num | speed | {"zh":"动画速度", "en":"Speed"} | (0.01~4, step=0.01) : 1
 $num | opacityMul | {"zh":"不透明度", "en":"Opacity"} | (0~1, step=0.01) : 1
@@ -836,7 +835,7 @@ void main()
       const luminance = (Number(cfg.adaptiveBackgroundLuminance)-0.5)*2;
       const baseOpacity = Math.max(0, Math.min(1, Number(cfg.opacityMul) || 1));
       const adaptiveOpacity = Number.isFinite(luminance)
-        ? Math.max(0, Math.min(1, 1 - luminance * 0.2))
+        ? Math.max(0, Math.min(1, 1 - luminance * 0.4))
         : 1;
       const fxHost = document.getElementById('fxHost');
       fxHost.style.opacity = String(baseOpacity * adaptiveOpacity);

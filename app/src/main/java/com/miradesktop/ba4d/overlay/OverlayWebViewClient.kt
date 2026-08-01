@@ -14,7 +14,9 @@ class OverlayWebViewClient(
         view: WebView?,
         request: WebResourceRequest?
     ): WebResourceResponse? {
-        val safeRequest = request ?: return super.shouldInterceptRequest(view, request)
+        // A nullable argument makes the two WebViewClient overloads ambiguous
+        // when forwarding to super. A null request has nothing to intercept.
+        val safeRequest = request ?: return null
         return OverlayContentUrl.shouldIntercept(context, safeRequest)
             ?: super.shouldInterceptRequest(view, request)
     }

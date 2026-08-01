@@ -70,7 +70,7 @@ class DebugFragment : Fragment() {
         val config = BASparkConfig.fromPreferences(prefs)
         val currentColor = prefs.getString("current_adaptive_color", "未检测")
 
-        val files = listOf("ba-spark-simple.html", "ba-spark-lite.mira.html")
+        val files = listOf("...")
         val fileStatus = files.joinToString("\n") { file ->
             val exists = try {
                 requireContext().assets.open(file).use { true }

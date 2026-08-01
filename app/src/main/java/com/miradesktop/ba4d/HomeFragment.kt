@@ -268,7 +268,7 @@ class HomeFragment : Fragment() {
         }
         binding.resetConfigButton.setOnClickListener {
             val startupFile = requireContext().getSharedPreferences("app_prefs", 0)
-                .getString("startup_file", null) ?: "ba-spark-lite.mira.html"
+                .getString("startup_file", null) ?: "ba-click-fx.mira.html"
             val supportedParams = HtmlParameterParser.parseHtmlFile(requireContext(), startupFile)
 
             // Use HTML defaults if available, otherwise use BASparkConfig defaults
@@ -393,7 +393,7 @@ class HomeFragment : Fragment() {
 
     private fun updateParameterVisibility() {
         val startupFile = requireContext().getSharedPreferences("app_prefs", 0)
-            .getString("startup_file", null) ?: "ba-spark-lite.mira.html"
+            .getString("startup_file", null) ?: "ba-click-fx.mira.html"
 
         val supportedParams = HtmlParameterParser.parseHtmlFile(requireContext(), startupFile)
 
