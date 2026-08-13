@@ -820,11 +820,23 @@ void main()
   }
   function start() {
   let origin = { x: window.screenX || 0, y: window.screenY || 0 };
-  let activePointerId = null;
-  const effect = new BAClickFX.BAClickFX({
-    target: '#fxHost',
-    inputSource: 'manual'
-  });
+  const effects = [];
+  const idleEffects = [];
+  const activePointers = new Map();
+  let currentEffectConfig = {};
+  let currentThemeColor;
+  function createEffect() {
+    const instance = new BAClickFX.BAClickFX({
+      target: '#fxHost',
+      inputSource: 'manual'
+    });
+    instance.updateConfig(currentEffectConfig);
+    if (currentThemeColor !== undefined) instance.setThemeColor(currentThemeColor);
+    effects.push(instance);
+    return instance;
+  }
+  const effect = createEffect();
+  idleEffects.push(effect);
   window.BAClickFXDemo = effect;
   function applyProps(next) {
     Object.assign(cfg, next || {});
@@ -859,8 +871,12 @@ void main()
       );
       fxHost.style.filter = '';
     }
-    effect.updateConfig(config);
-    if (cfg.color !== undefined) effect.setThemeColor(String(cfg.color));
+    currentEffectConfig = config;
+    effects.forEach(function (instance) { instance.updateConfig(config); });
+    if (cfg.color !== undefined) {
+      currentThemeColor = String(cfg.color);
+      effects.forEach(function (instance) { instance.setThemeColor(currentThemeColor); });
+    }
   }
   applyProps(cfg);
   try { window.parent.postMessage({ type: '__MIRAAPI_REQUEST_PROPS__', id: window.__MIRAAPI_ELEMENT_ID__ }, '*'); } catch (_) {}
@@ -870,8 +886,11 @@ void main()
     if (data && data.type === '__MIRAAPI_DISPLAY_ORIGIN__' && data.origin) origin = data.origin;
   });
   window.addEventListener('blur', function () {
-    if (activePointerId !== null) effect.pointerCancel(activePointerId);
-    activePointerId = null;
+    activePointers.forEach(function (active) {
+      active.effect.pointerCancel(active.pointerId);
+      idleEffects.push(active.effect);
+    });
+    activePointers.clear();
   });
   window.addEventListener('resize', function () {
     applyProps({});
@@ -916,14 +935,28 @@ void main()
       y = view.getInt32(9, true) / dpr - origin.y;
     } else return;
     if (source === 'mira') usingMiraInput = true;
-    const input = { x: x, y: y, pointerId: pointerId, pointerType: type === 0x02 ? 'touch' : 'mouse' };
+    const pointerType = type === 0x02 ? 'touch' : 'mouse';
+    const pointerKey = pointerType + ':' + pointerId;
+    const input = { x: x, y: y, pointerId: pointerId, pointerType: pointerType };
     if (view.getUint8(13) !== 0) {
-      if (activePointerId === null) {
-        if (effect.pointerDown(input)) activePointerId = pointerId;
-      } else if (activePointerId === pointerId) effect.pointerMove(input);
-    } else if (activePointerId === pointerId) {
-      effect.pointerUp(pointerId);
-      activePointerId = null;
+      const active = activePointers.get(pointerKey);
+      if (active) {
+        active.effect.pointerMove(input);
+      } else {
+        const pointerEffect = idleEffects.pop() || createEffect();
+        if (pointerEffect.pointerDown(input)) {
+          activePointers.set(pointerKey, { effect: pointerEffect, pointerId: pointerId });
+        } else {
+          idleEffects.push(pointerEffect);
+        }
+      }
+    } else {
+      const active = activePointers.get(pointerKey);
+      if (active) {
+        active.effect.pointerUp(pointerId);
+        activePointers.delete(pointerKey);
+        idleEffects.push(active.effect);
+      }
     }
   }
   window.addEventListener('message', function (event) {

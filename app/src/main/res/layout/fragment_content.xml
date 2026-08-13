@@ -76,6 +76,7 @@
     </com.google.android.material.textfield.TextInputLayout>
 
     <LinearLayout
+        android:id="@+id/clipboardButtons"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
@@ -90,14 +91,21 @@
             android:text="复制全部" />
 
         <Button
-            android:id="@+id/pasteButton"
+            android:id="@+id/replaceFromClipboardButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:enabled="false"
-            android:text="粘贴" />
+            android:text="清空并粘贴" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/exportButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="导出文件"
+        android:visibility="gone" />
 
     <Button
         android:id="@+id/saveButton"

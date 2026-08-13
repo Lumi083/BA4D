@@ -11,6 +11,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -31,9 +32,32 @@ class ContentFragment : Fragment() {
     private val binding get() = _binding!!
     private val files = mutableListOf<String>()
     private var selectedFile: String? = null
+    private var largeFile: String? = null
     private lateinit var adapter: FileAdapter
 
     private val assetFiles = mutableSetOf<String>()
+
+    private val exportFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
+        val file = largeFile ?: return@registerForActivityResult
+        if (uri == null) return@registerForActivityResult
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val exported = withContext(Dispatchers.IO) {
+                try {
+                    requireContext().contentResolver.openOutputStream(uri)?.use { output ->
+                        if (assetFiles.contains(file)) {
+                            requireContext().assets.open(file).use { it.copyTo(output) }
+                        } else {
+                            File(requireContext().filesDir, file).inputStream().use { it.copyTo(output) }
+                        }
+                    } != null
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            Toast.makeText(requireContext(), if (exported) "文件已导出" else "导出失败", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentContentBinding.inflate(inflater, container, false)
@@ -50,7 +74,8 @@ class ContentFragment : Fragment() {
         binding.setDefaultButton.setOnClickListener { setAsStartup() }
         binding.deleteButton.setOnClickListener { deleteFile() }
         binding.copyButton.setOnClickListener { copyToClipboard() }
-        binding.pasteButton.setOnClickListener { pasteFromClipboard() }
+        binding.replaceFromClipboardButton.setOnClickListener { replaceFromClipboard() }
+        binding.exportButton.setOnClickListener { largeFile?.let(exportFileLauncher::launch) }
         binding.saveButton.setOnClickListener { saveFile() }
 
         binding.filenameInput.addTextChangedListener { updateSaveButtonVisibility() }
@@ -84,6 +109,8 @@ class ContentFragment : Fragment() {
 
     private fun onFileClick(file: String) {
         selectedFile = file
+        largeFile = null
+        showLargeFileActions(false)
         binding.actionButtons.visibility = View.VISIBLE
         binding.setDefaultButton.isEnabled = true
         binding.deleteButton.isEnabled = true
@@ -125,11 +152,15 @@ class ContentFragment : Fragment() {
 
             when {
                 result.second == "success" -> {
+                    largeFile = null
+                    showLargeFileActions(false)
                     binding.filenameInput.setText(file)
                     binding.contentInput.setText(result.first)
                     updateSaveButtonVisibility()
                 }
                 result.second == "too_large" -> {
+                    largeFile = file
+                    showLargeFileActions(true)
                     binding.filenameInput.setText(file)
                     binding.contentInput.setText("")
                     Toast.makeText(requireContext(), "文件过大 (>20KB)，不显示内容", Toast.LENGTH_SHORT).show()
@@ -176,6 +207,8 @@ class ContentFragment : Fragment() {
         }
         File(requireContext().filesDir, file).delete()
         selectedFile = null
+        largeFile = null
+        showLargeFileActions(false)
         binding.actionButtons.visibility = View.GONE
         binding.filenameInput.setText("")
         binding.contentInput.setText("")
@@ -192,7 +225,7 @@ class ContentFragment : Fragment() {
             return
         }
         if (assetFiles.contains(name)) {
-            Toast.makeText(requireContext(), "不允许覆盖内置文件", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "不允许覆盖内置文件，请修改命名后保存", Toast.LENGTH_SHORT).show()
             return
         }
         File(requireContext().filesDir, name).writeText(content)
@@ -258,7 +291,11 @@ class ContentFragment : Fragment() {
     private fun updateClipboardButtons() {
         val hasContent = binding.contentInput.text?.isNotEmpty() == true
         binding.copyButton.isEnabled = hasContent
-        binding.pasteButton.isEnabled = hasContent
+    }
+
+    private fun showLargeFileActions(show: Boolean) {
+        binding.clipboardButtons.visibility = if (show) View.GONE else View.VISIBLE
+        binding.exportButton.visibility = if (show) View.VISIBLE else View.GONE
     }
 
     private fun copyToClipboard() {
@@ -270,17 +307,18 @@ class ContentFragment : Fragment() {
         Toast.makeText(requireContext(), "已复制全部内容", Toast.LENGTH_SHORT).show()
     }
 
-    private fun pasteFromClipboard() {
+    private fun replaceFromClipboard() {
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = clipboard.primaryClip
-        if (clip != null && clip.itemCount > 0) {
-            val text = clip.getItemAt(0).text?.toString() ?: return
-            val start = binding.contentInput.selectionStart
-            val end = binding.contentInput.selectionEnd
-            val currentText = binding.contentInput.text ?: return
-            currentText.replace(start, end, text)
-            Toast.makeText(requireContext(), "已粘贴", Toast.LENGTH_SHORT).show()
+        if (clip == null || clip.itemCount == 0) {
+            Toast.makeText(requireContext(), "剪贴板为空", Toast.LENGTH_SHORT).show()
+            return
         }
+
+        val text = clip.getItemAt(0).coerceToText(requireContext())
+        binding.contentInput.setText(text)
+        binding.contentInput.setSelection(text.length)
+        Toast.makeText(requireContext(), "已清空并粘贴", Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroyView() {
@@ -319,7 +357,7 @@ class FileAdapter(
         val file = files[position]
         val isStartup = file == getStartupFile()
         val text = holder.card.getChildAt(0) as android.widget.TextView
-        text.text = if (isStartup) "$file [默认]" else file
+        text.text = if (isStartup) "$file [当前]" else file
         holder.card.setCardBackgroundColor(if (position == selectedPos) 0xFFE3F2FD.toInt() else 0xFFFFFFFF.toInt())
         holder.card.setOnClickListener {
             val oldPos = selectedPos
