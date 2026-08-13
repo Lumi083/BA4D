@@ -31,7 +31,7 @@
     <string name="main_color_presets">主颜色预设</string>
     <string name="click_color_hint">点击圆圈颜色（rgba 或 Hex）</string>
     <string name="click_color_presets">点击圆圈预设</string>
-    <string name="scale_hint">大小（1.0-3.0）</string>
+    <string name="scale_hint">大小（0.001-100）</string>
     <string name="speed_hint">速度（1.0）</string>
     <string name="max_trail_hint">拖尾长度（32）</string>
     <string name="max_trail_per_pointer_hint">单段拖尾像素长度（300px）</string>
