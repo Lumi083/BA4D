@@ -825,11 +825,126 @@ void main()
   const activePointers = new Map();
   let currentEffectConfig = {};
   let currentThemeColor;
+  let adaptiveWhiteAmount = 0;
+  function getAdaptiveWhiteAmount(luminance) {
+    const progress = Math.max(0, Math.min(1, (luminance - 0.5) / 0.4));
+    return progress * progress * (3 - 2 * progress);
+  }
+  function whitenColor(color, amount) {
+    const value = Math.max(color[0], color[1], color[2]);
+    return color.map(function (channel) {
+      return channel + (value - channel) * amount;
+    });
+  }
+  function setWhiteColorKeys(keys, amount, originals) {
+    for (let index = 0; index < keys.length; index++) {
+      keys[index][1] = whitenColor(originals[index][1], amount);
+    }
+  }
+  function applyAdaptiveWhite(instance) {
+    const fx = instance.fxConfig;
+    const originals = instance.__adaptiveOriginalColors;
+    fx.adaptiveWhiteAmount = adaptiveWhiteAmount;
+    setWhiteColorKeys(fx.hit.colorKeys, adaptiveWhiteAmount, originals.hit);
+    setWhiteColorKeys(fx.flare.colorKeys, adaptiveWhiteAmount, originals.flare);
+    setWhiteColorKeys(fx.rings.colorKeys, adaptiveWhiteAmount, originals.rings);
+    setWhiteColorKeys(fx.shards.colorKeys, adaptiveWhiteAmount, originals.shards);
+    setWhiteColorKeys(fx.trail.gradient, adaptiveWhiteAmount, originals.trail);
+    fx.shards.startColor = whitenColor(originals.shardStart, adaptiveWhiteAmount);
+    fx.adaptiveDiskColorKeys = originals.disk.map(function (key) {
+      return [key[0], whitenColor(key[1], adaptiveWhiteAmount)];
+    });
+  }
+  function patchDiskAdaptiveWhite(instance) {
+    const wave = instance.waves[instance.waves.length - 1];
+    if (!wave) return;
+    const prototype = Object.getPrototypeOf(wave);
+    if (prototype.__adaptiveWhitePatched) return;
+    prototype.__adaptiveWhitePatched = true;
+    const originalDrawDiskLayer = prototype.drawDiskLayer;
+    const originalDrawDiskGlow = prototype.drawDiskGlow;
+    prototype.drawDiskLayer = function () {
+      const amount = this.fx.adaptiveWhiteAmount || 0;
+      if (amount <= 0) return originalDrawDiskLayer.apply(this, arguments);
+      const bloom = this.fx.bloom;
+      const diskAlpha = bloom.diskAlpha;
+      let result;
+      bloom.diskAlpha = 0;
+      try {
+        result = originalDrawDiskLayer.apply(this, arguments);
+      } finally {
+        bloom.diskAlpha = diskAlpha;
+      }
+      if (arguments[3] !== false) {
+        const colorKeys = this.fx.disk.colorKeys;
+        this.fx.disk.colorKeys = this.fx.adaptiveDiskColorKeys;
+        try {
+          originalDrawDiskGlow.call(
+            this,
+            arguments[0],
+            arguments[1],
+            arguments[2],
+            arguments[4]
+          );
+        } finally {
+          this.fx.disk.colorKeys = colorKeys;
+        }
+      }
+      return result;
+    };
+    prototype.drawDiskGlow = function () {
+      const amount = this.fx.adaptiveWhiteAmount || 0;
+      if (amount <= 0) return originalDrawDiskGlow.apply(this, arguments);
+      const colorKeys = this.fx.disk.colorKeys;
+      this.fx.disk.colorKeys = this.fx.adaptiveDiskColorKeys;
+      try {
+        return originalDrawDiskGlow.apply(this, arguments);
+      } finally {
+        this.fx.disk.colorKeys = colorKeys;
+      }
+    };
+    const originalDrawBloom = prototype.drawBloom;
+    prototype.drawBloom = function () {
+      const amount = this.fx.adaptiveWhiteAmount || 0;
+      if (amount <= 0) {
+        return originalDrawBloom.apply(this, arguments);
+      }
+      const colorKeys = this.fx.disk.colorKeys;
+      this.fx.disk.colorKeys = this.fx.adaptiveDiskColorKeys;
+      try {
+        return originalDrawBloom.apply(this, arguments);
+      } finally {
+        this.fx.disk.colorKeys = colorKeys;
+      }
+    };
+    const originalAppendWebGLBloom = prototype.appendWebGLBloom;
+    prototype.appendWebGLBloom = function () {
+      const amount = this.fx.adaptiveWhiteAmount || 0;
+      if (amount <= 0) return originalAppendWebGLBloom.apply(this, arguments);
+      const colorKeys = this.fx.disk.colorKeys;
+      this.fx.disk.colorKeys = this.fx.adaptiveDiskColorKeys;
+      try {
+        return originalAppendWebGLBloom.apply(this, arguments);
+      } finally {
+        this.fx.disk.colorKeys = colorKeys;
+      }
+    };
+  }
   function createEffect() {
     const instance = new BAClickFX.BAClickFX({
       target: '#fxHost',
       inputSource: 'manual'
     });
+    instance.__adaptiveOriginalColors = {
+      hit: structuredClone(instance.fxConfig.hit.colorKeys),
+      flare: structuredClone(instance.fxConfig.flare.colorKeys),
+      rings: structuredClone(instance.fxConfig.rings.colorKeys),
+      shards: structuredClone(instance.fxConfig.shards.colorKeys),
+      trail: structuredClone(instance.fxConfig.trail.gradient),
+      disk: structuredClone(instance.fxConfig.disk.colorKeys),
+      shardStart: instance.fxConfig.shards.startColor.slice()
+    };
+    applyAdaptiveWhite(instance);
     instance.updateConfig(currentEffectConfig);
     if (currentThemeColor !== undefined) instance.setThemeColor(currentThemeColor);
     effects.push(instance);
@@ -849,28 +964,21 @@ void main()
       config.trailTimeScale = Number(cfg.speed);
     }
     if (Number.isFinite(Number(cfg.maxDpr))) config.maxDpr = Number(cfg.maxDpr);
-    // Apply adaptive alpha to the completed host layer, not to the library's
-    // color, Bloom, Coverage, or render configuration.
-    if (cfg.adaptiveColor) {
-      const luminance = (Number(cfg.adaptiveBackgroundLuminance)-0.5)*2;
-      const baseOpacity = Math.max(0, Math.min(1, Number(cfg.opacityMul) || 1));
-      const adaptiveOpacity = Number.isFinite(luminance)
-        ? Math.max(0, Math.min(1, 1 - luminance * 0.4))
-        : 1;
-      const fxHost = document.getElementById('fxHost');
-      fxHost.style.opacity = String(baseOpacity * adaptiveOpacity);
-      // One final multiplicative operation; do not depend on SVG filters.
-      const brightness = Number.isFinite(luminance)
-        ? 1 + Math.max(0, Math.min(1, luminance)) * 1
-        : 1;
-      fxHost.style.filter = `brightness(${brightness})`;
-    } else {
-      const fxHost = document.getElementById('fxHost');
-      fxHost.style.opacity = String(
-        Math.max(0, Math.min(1, Number(cfg.opacityMul) || 1)),
-      );
-      fxHost.style.filter = '';
-    }
+    const opacityValue = Number(cfg.opacityMul);
+    const baseOpacity = Number.isFinite(opacityValue)
+      ? Math.max(0, Math.min(1, opacityValue))
+      : 1;
+    const sampledLuminance = Number(cfg.adaptiveBackgroundLuminance);
+    const backgroundLuminance = Number.isFinite(sampledLuminance)
+      ? Math.max(0, Math.min(1, sampledLuminance))
+      : 0;
+    adaptiveWhiteAmount = cfg.adaptiveColor
+      ? getAdaptiveWhiteAmount(backgroundLuminance)
+      : 0;
+    const fxHost = document.getElementById('fxHost');
+    fxHost.style.opacity = String(baseOpacity);
+    fxHost.style.filter = '';
+    effects.forEach(applyAdaptiveWhite);
     currentEffectConfig = config;
     effects.forEach(function (instance) { instance.updateConfig(config); });
     if (cfg.color !== undefined) {
@@ -945,6 +1053,7 @@ void main()
       } else {
         const pointerEffect = idleEffects.pop() || createEffect();
         if (pointerEffect.pointerDown(input)) {
+          patchDiskAdaptiveWhite(pointerEffect);
           activePointers.set(pointerKey, { effect: pointerEffect, pointerId: pointerId });
         } else {
           idleEffects.push(pointerEffect);
