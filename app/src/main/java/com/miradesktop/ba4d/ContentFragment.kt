@@ -5,8 +5,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -59,6 +61,10 @@ class ContentFragment : Fragment() {
         }
     }
 
+    private val importFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importFile(uri)
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentContentBinding.inflate(inflater, container, false)
         return binding.root
@@ -76,6 +82,7 @@ class ContentFragment : Fragment() {
         binding.copyButton.setOnClickListener { copyToClipboard() }
         binding.replaceFromClipboardButton.setOnClickListener { replaceFromClipboard() }
         binding.exportButton.setOnClickListener { largeFile?.let(exportFileLauncher::launch) }
+        binding.importButton.setOnClickListener { importFileLauncher.launch(arrayOf("*/*")) }
         binding.saveButton.setOnClickListener { saveFile() }
 
         binding.filenameInput.addTextChangedListener { updateSaveButtonVisibility() }
@@ -319,6 +326,54 @@ class ContentFragment : Fragment() {
         binding.contentInput.setText(text)
         binding.contentInput.setSelection(text.length)
         Toast.makeText(requireContext(), "已清空并粘贴", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun importFile(uri: Uri) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val name = queryDisplayName(uri)
+                        ?: uri.lastPathSegment?.substringAfterLast('/')
+                        ?: return@withContext "@error"
+                    if (!name.endsWith(".html")) {
+                        return@withContext "@not_html"
+                    }
+                    if (assetFiles.contains(name)) {
+                        return@withContext "@builtin"
+                    }
+                    val input = requireContext().contentResolver.openInputStream(uri)
+                        ?: return@withContext "@error"
+                    input.use { stream ->
+                        File(requireContext().filesDir, name).outputStream().use { stream.copyTo(it) }
+                    }
+                    name
+                } catch (_: Exception) {
+                    "@error"
+                }
+            }
+
+            when (result) {
+                "@not_html" -> Toast.makeText(requireContext(), "请选择 .html 文件", Toast.LENGTH_SHORT).show()
+                "@builtin" -> Toast.makeText(requireContext(), "不允许覆盖内置文件，请重命名后导入", Toast.LENGTH_SHORT).show()
+                "@error" -> Toast.makeText(requireContext(), "导入失败", Toast.LENGTH_SHORT).show()
+                else -> {
+                    refreshFiles()
+                    onFileClick(result)
+                    Toast.makeText(requireContext(), "已导入 $result", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            requireContext().contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+            } ?: uri.lastPathSegment?.substringAfterLast('/')
+        } catch (_: Exception) {
+            null
+        }
     }
 
     override fun onDestroyView() {
