@@ -6,7 +6,7 @@ import org.json.JSONObject
 data class BASparkConfig(
     val fpsLimit: Int = 60,
     val color: String = "rgba(87, 164, 255, 1)",
-    val trailColor: String = "rgba(255, 255, 255, 1)",
+    val trailColor: String = "rgba(0, 200, 255, 1)",
     val scale: Float = 1.5f,
     val speed: Float = 1.0f,
     val maxTrail: Int = 12,

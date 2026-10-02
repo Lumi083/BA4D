@@ -33,6 +33,7 @@ class HomeFragment : Fragment() {
         private const val SOURCE_SHIZUKU = "shizuku"
         private const val SOURCE_ROOT = "root"
         private const val SOURCE_DIRECT_DEPRECATED = "direct"
+        private const val SAVE_DEBOUNCE_MS = 500L
     }
 
     private var _binding: FragmentHomeBinding? = null
@@ -42,6 +43,8 @@ class HomeFragment : Fragment() {
     private var pendingStartOverlay = false
     private var pendingUseAccessibility = false
     private var overlay_visible = false
+    private val saveHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingSave: Runnable? = null
 
     private val screenCaptureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -69,10 +72,10 @@ class HomeFragment : Fragment() {
         bindConfig(config)
         migrateDeprecatedDirectSource()
         binding.radioDirect.visibility = View.GONE
-        setupListeners()
         loadMimosaDataSource()
         loadHideFromRecentsPreference()
         loadHideAnimationInLandscapePreference()
+        setupListeners()
         updateParameterVisibility()
     }
 
@@ -162,8 +165,8 @@ class HomeFragment : Fragment() {
 
     private fun setupListeners() {
         binding.startOverlayButton.setOnClickListener {
+            saveConfig()
             val config = readConfig()
-            BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), config)
 
             android.util.Log.d("HomeFragment", "Start button clicked")
 
@@ -284,7 +287,7 @@ class HomeFragment : Fragment() {
             supportedParams.opacityMulDefault?.let { binding.opacityMulInput.setText(it.toString()) } ?: binding.opacityMulInput.setText(defaults.opacityMul.toString())
             supportedParams.fpsLimitDefault?.let { binding.fpsLimitInput.setText(it.toString()) } ?: binding.fpsLimitInput.setText(defaults.fpsLimit.toString())
 
-            BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), readConfig())
+            saveConfig()
         }
         binding.mainColorPreset0.setOnClickListener { binding.colorInput.setText("rgba(35, 207, 255, 1)") }
         binding.mainColorPreset1.setOnClickListener { binding.colorInput.setText("rgba(122, 0, 255, 1)") }
@@ -315,7 +318,7 @@ class HomeFragment : Fragment() {
             saveHideAnimationInLandscapePreference(isChecked)
         }
 
-        val autoSave = { saveConfig() }
+        val autoSave = { scheduleSave() }
         binding.fpsLimitInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) = autoSave()
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -364,30 +367,42 @@ class HomeFragment : Fragment() {
         binding.adaptiveColorSwitch.setOnCheckedChangeListener { _, _ -> autoSave() }
     }
 
+    private fun scheduleSave() {
+        pendingSave?.let { saveHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            pendingSave = null
+            BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), readConfig())
+        }
+        pendingSave = runnable
+        saveHandler.postDelayed(runnable, SAVE_DEBOUNCE_MS)
+    }
+
     private fun saveConfig() {
+        pendingSave?.let { saveHandler.removeCallbacks(it) }
+        pendingSave = null
         BASparkConfig.save(requireContext().getSharedPreferences(BASparkConfig.PREFS_NAME, 0), readConfig())
     }
 
     private fun readConfig(): BASparkConfig {
-        fun readInt(text: CharSequence?, default: Int, min: Int, max: Int) =
-            text?.toString()?.toIntOrNull()?.coerceIn(min, max) ?: default
-        fun readFloat(text: CharSequence?, default: Float, min: Float, max: Float) =
-            text?.toString()?.toFloatOrNull()?.coerceIn(min, max) ?: default
-        val d = BASparkConfig()
+        val saved = loadConfig()
+        fun readInt(text: CharSequence?, fallback: Int) =
+            text?.toString()?.trim()?.toIntOrNull() ?: fallback
+        fun readFloat(text: CharSequence?, fallback: Float) =
+            text?.toString()?.trim()?.toFloatOrNull() ?: fallback
         return BASparkConfig(
-            fpsLimit = readInt(binding.fpsLimitInput.text, d.fpsLimit, 15, 240),
-            color = binding.colorInput.text?.toString().orEmpty().ifBlank { d.color },
-            trailColor = binding.trailColorInput.text?.toString().orEmpty().ifBlank { d.trailColor },
-            scale = readFloat(binding.scaleInput.text, d.scale, 0.5f, 3.0f),
-            speed = readFloat(binding.speedInput.text, d.speed, 0.2f, 3.0f),
-            maxTrail = readInt(binding.maxTrailInput.text, d.maxTrail, 0, 999),
-            maxTrailPerPointer = readInt(binding.maxTrailPerPointerInput.text, d.maxTrailPerPointer, 0, 1000),
-            sparkRate = readFloat(binding.sparkRateInput.text, d.sparkRate, 0f, 1f),
-            alwaysTrail = d.alwaysTrail,
+            fpsLimit = readInt(binding.fpsLimitInput.text, saved.fpsLimit),
+            color = binding.colorInput.text?.toString()?.trim().orEmpty().ifBlank { saved.color },
+            trailColor = binding.trailColorInput.text?.toString()?.trim().orEmpty().ifBlank { saved.trailColor },
+            scale = readFloat(binding.scaleInput.text, saved.scale),
+            speed = readFloat(binding.speedInput.text, saved.speed),
+            maxTrail = readInt(binding.maxTrailInput.text, saved.maxTrail),
+            maxTrailPerPointer = readInt(binding.maxTrailPerPointerInput.text, saved.maxTrailPerPointer),
+            sparkRate = readFloat(binding.sparkRateInput.text, saved.sparkRate),
+            alwaysTrail = saved.alwaysTrail,
             adaptiveColor = binding.adaptiveColorSwitch.isChecked,
-            dpr = d.dpr,
-            opacityMul = readFloat(binding.opacityMulInput.text, d.opacityMul, 0f, 1f),
-            port = d.port
+            dpr = saved.dpr,
+            opacityMul = readFloat(binding.opacityMulInput.text, saved.opacityMul),
+            port = saved.port
         )
     }
 
@@ -460,8 +475,14 @@ class HomeFragment : Fragment() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        if (pendingSave != null) saveConfig()
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
+        if (pendingSave != null) saveConfig()
         _binding = null
     }
 
